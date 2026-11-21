@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.20.0';
+  var VERSION = '0.20.1';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -304,12 +304,38 @@
     box.innerHTML = out.join('');
   }
   /* Añade un alimento con la cantidad de la última vez (o la ración normal) ya puesta. */
+  /* Al elegir un alimento se pregunta cuánto vas a comer, con atajos y el cálculo al momento. */
+  var qtyFood = null;
   function addFood(f) {
-    var it = { name: f.name, hc100: f.hc100, grams: '', portion: f.portion || null };
+    qtyFood = f;
+    var u = f.unit || 'g', uname = u === 'ud' ? 'unidades' : u === 'ml' ? 'mililitros' : 'gramos', us = u === 'ud' ? 'ud' : u;
+    var last = S.lastQty[f.name], pre = last || f.portion || '';
+    var quick = u === 'ud' ? [1, 2, 3, 4] : u === 'ml' ? [100, 200, 250, 330] : [50, 100, 150, 200];
+    var chips = (last ? [['Como la última vez', last]] : []).concat(f.portion && f.portion !== last ? [['Ración normal', f.portion]] : []).concat(quick.filter(function (q) { return q !== last && q !== f.portion; }).map(function (q) { return ['', q]; }));
+    openDlg('<h3>¿Cuánto vas a tomar?</h3><p style="margin:0 0 4px;font-weight:650">' + esc(f.name) + '</p><p class="fine" style="margin-top:0">' + hcText(num(f.hc100) || 0, u) + '</p>' +
+      '<label>Cantidad en ' + uname + '</label><div class="qrow"><input id="qn" inputmode="decimal" value="' + esc(String(pre).replace('.', ',')) + '" placeholder="0"><span>' + us + '</span></div>' +
+      '<div class="chips">' + chips.map(function (c) { return '<button class="chip" data-act="qset" data-v="' + c[1] + '">' + (c[0] ? c[0] + ' · ' : '') + fmt(c[1], 0) + ' ' + us + '</button>'; }).join('') + '</div>' +
+      '<div class="qprev" id="qprev"></div>' +
+      (u === 'g' ? '<p class="fine">Si no tienes báscula, una ración normal de plato de arroz o pasta cocidos son unos 150–200 g.</p>' : '') +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="qadd">Añadir al plato</button></div>');
+    qtyPrev();
+    var q = $('#qn'); if (q) { q.focus(); if (q.select) q.select(); }
+  }
+  function qtyPrev() {
+    var el = $('#qprev'), q = $('#qn'); if (!el || !q || !qtyFood) return;
+    var c = Calc.carbsOf({ hc100: qtyFood.hc100, grams: q.value, unit: qtyFood.unit || 'g' });
+    el.innerHTML = num(q.value) > 0 ? '= <b>' + fmt(c, 1) + ' g</b> de hidratos · ' + fmt(c / Calc.RACION, 1) + ' raciones' : 'Escribe la cantidad o toca un atajo';
+  }
+  function qtyAdd() {
+    var q = num(($('#qn') || {}).value), f = qtyFood;
+    if (!f) return;
+    if (!(q > 0)) { toast('Pon la cantidad'); return; }
+    var it = { name: f.name, hc100: f.hc100, grams: String(q), portion: f.portion || null };
     if (f.unit && f.unit !== 'g') it.unit = f.unit;
-    if (S.lastQty[f.name]) { it.grams = String(S.lastQty[f.name]); it.pre = 'last'; }
-    else if (f.portion) { it.grams = String(f.portion); it.pre = 'portion'; }
-    addItem(it);
+    S.meal.items.push(it); save(); closeDlg(); tab = 'comida';
+    var qi = $('#qi'); if (qi) qi.value = '';
+    render();
+    toast('Añadido. Añade más alimentos o toca la barra verde para ver la dosis');
   }
   function remember(items) {
     items.forEach(function (it) {
@@ -1388,6 +1414,7 @@
 
   document.addEventListener('input', function (e) {
     var t = e.target; if (!t.dataset) return;
+    if (t.id === 'qn') { qtyPrev(); return; }
     if (t.dataset.s === 'cfg.ratioAll') { S.cfg.ratioAll = t.value.trim(); SLOTS.forEach(function (x) { S.cfg.ratios[x[0]] = S.cfg.ratioAll; }); save(); return; }
     if (t.dataset.s) {
       setPath(t.dataset.s, t.value.trim ? t.value.trim() : t.value);
@@ -1420,6 +1447,8 @@
       case 'slot': S.meal.slot = b.dataset.v; save(); render(); break;
       case 'del': S.meal.items.splice(i, 1); save(); render(); break;
       case 'clear': if (S.meal.items.length) confirmDlg('¿Vaciar la comida actual?', function () { S.meal = { items: [], slot: '' }; save(); render(); }); break;
+      case 'qset': { var qn = $('#qn'); if (qn) { qn.value = b.dataset.v; qtyPrev(); } break; }
+      case 'qadd': qtyAdd(); break;
       case 'pick': {
         var f = b.dataset.src === 'c' ? S.custom[+b.dataset.k] : null, base = b.dataset.src === 'b' ? FOODS[+b.dataset.k] : null;
         if (f) addFood({ name: f.name, hc100: f.hc100, unit: f.unit || 'g', portion: null });
@@ -1593,6 +1622,7 @@
 
   document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.dataset && d.dataset.sec) openSecs[d.dataset.sec] = d.open; }, true);
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target && e.target.id === 'qn') { e.preventDefault(); qtyAdd(); return; }
     if (e.key === 'Enter' && e.target && e.target.id === 'gi') { e.preventDefault(); var b = $('[data-act="gsave"]'); if (b) b.click(); }
   });
   ['cam', 'gal'].forEach(function (id) {

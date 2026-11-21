@@ -237,6 +237,9 @@ body.hassum #toast{bottom:calc(170px + env(safe-area-inset-bottom))}
 #res[hidden]{display:none}
 .micbtn{display:flex;align-items:center;gap:8px;margin-top:8px}.micbtn svg{width:20px;height:20px;color:var(--acc)}
 html.light nav{background:#fff;box-shadow:0 -1px 0 var(--line)}html.light nav button.on{color:var(--acc)}html.night nav{background:#000}
+body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:30;pointer-events:none}
+.qrow{display:flex;align-items:center;gap:10px}.qrow input{font-size:28px;font-weight:700;text-align:center}.qrow span{font-size:20px;color:var(--mut);min-width:34px}
+.qprev{margin:12px 0 4px;padding:12px;border-radius:12px;background:var(--info-bg);font-size:17px;text-align:center}
 </style>
 </head>
 <body>

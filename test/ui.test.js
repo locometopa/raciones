@@ -83,10 +83,12 @@ assert.ok($('.gstrip'));
 type($('#qi'), 'arroz blanco coc');
 assert.ok($('#qr button[data-act="pick"]')); assert.ok(act('newfood'));
 click($('#qr button[data-act="pick"]'));
-assert.strictEqual(S().meal.items.length, 1);
-assert.strictEqual(S().meal.items[0].grams, '150', 'ración normal puesta'); assert.ok(text().includes('ración normal'));
-assert.strictEqual(d.activeElement, $('#items input.n'), 'el foco va a los gramos');
-type($('#items input.n'), '200');
+// Se pregunta la cantidad, con la ración normal puesta y el cálculo al momento
+assert.ok($('#dlg').textContent.includes('¿Cuánto vas a tomar?')); assert.strictEqual($('#qn').value, '150'); assert.strictEqual(d.activeElement, $('#qn'));
+assert.ok($('#qprev').textContent.includes('42 g'));
+type($('#qn'), '200'); assert.ok($('#qprev').textContent.includes('56 g'));
+click(act('qadd'));
+assert.strictEqual(S().meal.items.length, 1); assert.strictEqual(S().meal.items[0].grams, '200');
 assert.ok(text().includes('56 g'), 'hidratos del arroz');
 assert.ok(text().includes('5,6 raciones'));
 // Glucosa 60: hipoglucemia, sin dosis; la barra fija lo dice
@@ -136,18 +138,18 @@ assert.ok(text().includes('Aún está vacío'));
 assert.ok(!act('describe'), 'sin IA no sale Describir'); assert.ok(text().includes('Activa la IA'));
 // Ración normal de un toque
 type($('#qi'), 'manzana'); click($('#qr button[data-act="pick"]'));
-click(act('portion')); assert.strictEqual(S().meal.items[0].grams, '180'); assert.ok(text().includes('= 21,6 g HC'));
+click($('[data-act="qset"][data-v="180"]')); click(act('qadd')); assert.strictEqual(S().meal.items[0].grams, '180'); assert.ok(text().includes('= 21,6 g HC'));
 click(act('del'));
 
 // Recientes con la cantidad de la última vez
-click(act('recent')); const arroz = S().meal.items.find((x) => x.name === 'Arroz blanco cocido');
-assert.strictEqual(arroz.grams, '200'); assert.strictEqual(arroz.pre, 'last'); assert.ok(text().includes('cantidad de la última vez'));
+click(act('recent')); assert.ok($('#dlg').textContent.includes('Como la última vez')); assert.strictEqual($('#qn').value, '200'); click(act('qadd'));
+const arroz = S().meal.items.find((x) => x.name === 'Arroz blanco cocido'); assert.strictEqual(arroz.grams, '200');
 const dd = d.querySelectorAll('[data-act="del"]'); click(dd[dd.length - 1]);
 // Bebidas en ml y cosas por unidades
-type($('#qi'), 'cafe con leche'); assert.ok($('#qr').textContent.includes('g/100 ml')); click($('#qr button[data-act="pick"]'));
+type($('#qi'), 'cafe con leche'); assert.ok($('#qr').textContent.includes('g/100 ml')); click($('#qr button[data-act="pick"]')); assert.ok($('#dlg').textContent.includes('mililitros')); click(act('qadd'));
 assert.ok(text().includes('ml')); assert.ok(text().includes('= 6,8 g HC'), 'taza de 200 ml');
 type($('#qi'), 'sobre de azucar'); assert.ok($('#qr').textContent.includes('g HC/ud')); click($('#qr button[data-act="pick"]'));
-type($('#items .item2:last-child input.n'), '2'); assert.ok(text().includes('= 16 g HC'));
+assert.ok($('#dlg').textContent.includes('unidades')); type($('#qn'), '2'); click(act('qadd')); assert.ok(text().includes('= 16 g HC'));
 assert.ok(text().includes('unidades'));
 d.querySelectorAll('[data-act="del"]').forEach(() => click($('[data-act="del"]')));
 assert.strictEqual(S().meal.items.length, 0);
