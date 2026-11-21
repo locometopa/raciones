@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.4.1';
+  var VERSION = '0.5.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -8,7 +8,9 @@
   var ICON = {
     barcode: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5v14M7.5 5v14M10.5 5v14M14 5v14M17 5v14M20 5v14"/></svg>',
     pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
-    camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
+    camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
   };
   var native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -145,20 +147,28 @@
       (x.arrow ? ' <span class="sarr">' + x.arrow + '</span>' : '') + ' <small>mg/dL</small></span><span class="sage">' +
       (x.g.v !== null ? esc(ageText()) + (x.old ? ' · antigua' : '') : 'Sin glucosa · toca para escribirla') + '</span></button>';
   }
+  function way(act, icon, title, sub) { return '<button class="way" data-act="' + act + '">' + icon + '<span><b>' + title + '</b><small>' + sub + '</small></span></button>'; }
   function vMeal() {
     var m = S.meal, slot = curSlot(), h = stripHTML();
     h += '<div class="chips slots">' + SLOTS.map(function (s) { return '<button class="chip' + (s[0] === slot ? ' on' : '') + '" data-act="slot" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
-    h += '<section class="card"><h2>Qué vas a comer</h2><input id="qi" data-f="qi" placeholder="Buscar alimento: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"><div id="qr" class="list"></div>' +
-      '<div class="tools"><button data-act="barcode">' + ICON.barcode + 'Código</button><button data-act="manual">' + ICON.pencil + 'HC a mano</button>' +
-      (aiOn() ? '<button data-act="photo">' + ICON.camera + 'Foto</button>' : '') + '</div>';
-    if (S.plates.length) h += '<div class="lab">Mis platos</div><div class="chips">' + S.plates.map(function (p, i) { return '<button class="chip" data-act="useplate" data-i="' + i + '">' + esc(p.name) + ' · ' + fmt(Calc.mealCarbs(p.items), 0) + ' g</button>'; }).join('') + '</div>';
-    h += '<div id="items" style="margin-top:12px">';
+    h += '<section class="card"><h2>¿Qué vas a comer?</h2>' +
+      '<div class="sbox">' + ICON.search + '<input id="qi" data-f="qi" type="search" placeholder="Busca: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"></div><div id="qr" class="list"></div>' +
+      '<div class="lab">O añádelo de otra forma</div><div class="ways">' +
+      (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') : '') +
+      way('barcode', ICON.barcode, 'Código', 'Producto envasado') + way('manual', ICON.pencil, 'Hidratos', 'Ya sé los gramos de HC') + '</div>' +
+      (aiOn() ? '' : '<p class="fine">Activa la IA en Ajustes para describir lo que vas a comer o hacerle una foto.</p>');
+    if (S.plates.length) h += '<div class="lab">Repetir un plato guardado</div><div class="chips">' + S.plates.map(function (p, i) { return '<button class="chip" data-act="useplate" data-i="' + i + '">' + esc(p.name) + ' · ' + fmt(Calc.mealCarbs(p.items), 0) + ' g</button>'; }).join('') + '</div>';
+    h += '</section>';
+    h += '<section class="card"><h2>En tu plato' + (m.items.length ? ' · ' + m.items.length : '') + '</h2><div id="items">';
+    if (!m.items.length) h += '<p class="mut" style="margin:0">Aún está vacío. Busca un alimento arriba o usa uno de los botones.</p>';
     m.items.forEach(function (it, i) {
       var direct = it.hcDirect !== undefined && it.hcDirect !== null;
-      h += '<div class="item"><div class="nm"><b>' + esc(it.name) + '</b><small>' +
-        (direct ? 'hidratos a mano' : fmt(num(it.hc100) || 0, 1) + ' g HC/100 g') + (it.est ? ' · <span style="color:var(--warn)">estimado por foto</span>' : '') + '</small></div>' +
-        '<input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="' + (direct ? 'g HC' : (it.portion ? 'p. ej. ' + it.portion : 'gramos')) + '" aria-label="' + (direct ? 'Gramos de hidratos' : 'Gramos de alimento') + '">' +
-        '<span class="hc" id="hc' + i + '"></span><button class="x" data-act="del" data-i="' + i + '" aria-label="Quitar">✕</button></div>';
+      h += '<div class="item2"><div class="it-top"><div class="nm"><b>' + esc(it.name) + '</b><small>' +
+        (direct ? 'hidratos que has puesto tú' : fmt(num(it.hc100) || 0, 1) + ' g de HC por cada 100 g') + (it.est ? ' · <span class="estm">estimado por IA</span>' : '') + '</small></div>' +
+        '<button class="x" data-act="del" data-i="' + i + '" aria-label="Quitar ' + esc(it.name) + '">✕</button></div>' +
+        '<div class="it-qty"><label class="qty"><input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="0" aria-label="' + (direct ? 'Gramos de hidratos' : 'Gramos de ' + esc(it.name)) + '"><span>' + (direct ? 'g de HC' : 'gramos') + '</span></label>' +
+        (!direct && it.portion ? '<button class="chip mini" data-act="portion" data-i="' + i + '">Ración normal: ' + it.portion + ' g</button>' : '') +
+        '<span class="hc" id="hc' + i + '"></span></div></div>';
     });
     h += '</div></section><section class="card" id="res"></section>';
     view.innerHTML = h;
@@ -170,7 +180,7 @@
     renderSum(c);
     var res = $('#res'); if (!res) return;
     var r = c.r, h = '';
-    S.meal.items.forEach(function (it, i) { var el = $('#hc' + i); if (el) el.textContent = fmt(Calc.carbsOf(it), 1) + ' g'; });
+    S.meal.items.forEach(function (it, i) { var el = $('#hc' + i); if (el) el.textContent = '= ' + fmt(Calc.carbsOf(it), 1) + ' g HC'; });
     var st = $('.gstrip'); if (st) st.outerHTML = stripHTML();
 
     h += '<h2>Resultado · ' + esc(slotName(c.slot)) + '</h2>';
@@ -187,7 +197,7 @@
         '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
         '<tr><td>Insulina activa<small>' + (num(S.cfg.dia) > 0 ? 'quedan ' + fu(r.iob) + ' de dosis registradas' : 'duración de la insulina sin configurar') + '</small></td><td>' + (r.iobUsed > 0 ? '−' + fu(r.iobUsed) : '—') + '</td></tr></table>';
       h += '<div class="dose"><span class="mut">Sugerencia</span><b>' + fu(r.total) + '</b><span class="mut">sin redondear: ' + fmt(r.raw, 2) + '</span></div>';
-      if (S.meal.items.some(function (x) { return x.est; })) h += '<div class="note warn">Hay cantidades estimadas por foto. Revísalas antes de fiarte del resultado.</div>';
+      if (S.meal.items.some(function (x) { return x.est; })) h += '<div class="note warn">Hay cantidades estimadas por la IA. Revísalas antes de fiarte del resultado.</div>';
       if (r.capped) h += '<div class="note warn">El cálculo supera tu dosis máxima configurada (' + fu(num(S.cfg.maxBolus)) + '); se ha limitado a ese tope.</div>';
       if (!r.hasGlucose && !c.g.bad) h += '<div class="note warn">Sin glucosa: solo se ha calculado la parte de la comida.</div>';
       var tr = +S.now.trend;
@@ -306,6 +316,18 @@
       '<label>Pistas (opcional)</label><input id="phint" placeholder="Plato llano grande, es arroz con pollo…">' +
       '<div class="acts"><button data-act="close">Cancelar</button><button data-act="photogal">Galería</button><button class="pri" data-act="photocam">Hacer foto</button></div>');
   }
+  function dlgDescribe() {
+    estimate = null;
+    openDlg('<h3>Describe lo que vas a comer</h3><p class="mut">Escríbelo como se lo dirías a alguien (también puedes dictarlo con el micrófono del teclado). Si sabes cantidades, dilas.</p>' +
+      '<textarea id="dtext" rows="4" placeholder="Ej.: un plato de lentejas con chorizo, un trozo de pan y una manzana de postre"></textarea>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="describego">Calcular con IA</button></div>');
+    var t = $('#dtext'); if (t) t.focus();
+  }
+  async function analyzeText(text) {
+    openDlg('<h3>Calculando…</h3><p class="mut">La IA está estimando los alimentos y las cantidades.</p>');
+    try { showEstimate(await Vision.describe(text, aiCfg())); }
+    catch (e) { msgDlg('No se pudo calcular', e && e.message ? e.message : 'Error desconocido'); }
+  }
   async function analyzePhoto(file) {
     var hint = ($('#phint') || {}).value || '';
     openDlg('<h3>Foto del plato</h3><p class="mut">Analizando la foto…</p>');
@@ -316,13 +338,13 @@
   }
   function showEstimate(est) {
     estimate = est;
-    if (!est.items.length) { msgDlg('Foto del plato', 'La IA no ha reconocido alimentos en la foto.' + (est.notes ? ' ' + est.notes : '')); estimate = null; return; }
+    if (!est.items.length) { msgDlg('Sin alimentos', 'La IA no ha encontrado alimentos.' + (est.notes ? ' ' + est.notes : '')); estimate = null; return; }
     var total = Calc.mealCarbs(est.items);
     openDlg('<h3>Propuesta de la IA</h3><div>' + est.items.map(function (it) {
       return '<div class="item"><div class="nm"><b>' + esc(it.name) + '</b><small>≈ ' + it.grams + ' g · ' + fmt(it.hc100, 1) + ' g HC/100 g · confianza ' + esc(it.conf) + '</small></div><span class="hc">' + fmt(Calc.carbsOf(it), 1) + ' g</span></div>';
     }).join('') + '</div><div class="tot" style="margin-top:8px"><span>Total estimado</span><span><b>' + fmt(total, 1) + '</b> g</span></div>' +
       (est.notes ? '<div class="note info">' + esc(est.notes) + '</div>' : '') +
-      '<div class="note warn">Es una estimación a ojo: los gramos pueden desviarse bastante. Al añadirla podrás corregir cada cantidad.</div>' +
+      '<div class="note warn">Es una estimación: los gramos pueden desviarse bastante. Al añadirla podrás corregir cada cantidad.</div>' +
       '<div class="acts"><button data-act="close">Descartar</button><button class="pri" data-act="photoadd">Añadir a la comida</button></div>');
   }
 
@@ -383,7 +405,7 @@
       (native ? '<div class="row" style="margin-top:10px"><button data-act="libretest">Probar lectura</button></div>' : '<p class="fine">La lectura solo funciona en la app instalada; desde un navegador no es posible.</p>') +
       '<p class="fine">El correo y la contraseña se guardan solo en este dispositivo.</p></section>';
     var pv = S.ai.provider, P = Vision.PROVIDERS[pv];
-    h += '<section class="card"><h2>Foto del plato con IA (opcional)</h2><p class="mut">Si lo activas, aparece el botón «Foto» en Comida. La foto se envía al servicio que elijas, que propone alimentos y gramos aproximados para que los revises. Necesita internet y una clave de ese servicio.</p>' +
+    h += '<section class="card"><h2>Foto del plato con IA (opcional)</h2><p class="mut">Si lo activas, en Comida aparecen «Describir» y «Foto». Lo que escribas o la foto se envía al servicio que elijas, que propone alimentos y gramos aproximados para que los revises. Necesita internet y una clave de ese servicio.</p>' +
       sel('Estimación por foto', 'ai.on', [['0', 'Desactivada'], ['1', 'Activada']]) +
       sel('Servicio', 'ai.provider', Object.keys(Vision.PROVIDERS).map(function (k) { return [k, Vision.PROVIDERS[k].name]; })) +
       '<div class="note info"><b>Cómo conseguir la clave</b><ol style="margin:6px 0 0;padding-left:20px">' + P.steps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' +
@@ -513,10 +535,13 @@
       case 'bcadd': if (bcProduct && bcProduct.hc100 !== null) { if (!S.custom.some(function (x) { return x.code === bcProduct.code; })) S.custom.push({ name: bcProduct.name, hc100: bcProduct.hc100, code: bcProduct.code }); addItem({ name: bcProduct.name, hc100: bcProduct.hc100, grams: '' }); } break;
       case 'bcnew': dlgNewFood(bcProduct && bcProduct.name || '', '', bcProduct && bcProduct.code || ''); break;
       case 'photo': dlgPhoto(); break;
+      case 'describe': dlgDescribe(); break;
+      case 'describego': { var dt = ($('#dtext') || {}).value || ''; if (!dt.trim()) { toast('Escribe qué vas a comer'); break; } analyzeText(dt.trim()); break; }
+      case 'portion': { var pi = S.meal.items[i]; if (pi && pi.portion) { pi.grams = String(pi.portion); save(); render(); } break; }
       case 'photocam': $('#cam').click(); break;
       case 'photogal': $('#gal').click(); break;
       case 'photoadd':
-        if (estimate) { estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); toast('Añadido: revisa los gramos'); }
+        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); toast('Añadido: revisa las cantidades'); }
         break;
       case 'useplate': usePlate(i); break;
       case 'saveplate': openDlg('<h3>Guardar como plato</h3><label>Nombre del plato</label><input id="pn" placeholder="Desayuno de diario…"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="platesave">Guardar</button></div>'); break;

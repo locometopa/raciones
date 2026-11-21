@@ -8,7 +8,7 @@ App Android hecha con tecnología web (carpeta `www`) envuelta con Capacitor.
 ## Qué hace
 
 - **Ahora**: glucosa grande con color según tu rango y flecha de tendencia, gráfica de 12 horas (del Libre o de tus lecturas a mano) con tus dosis marcadas, insulina activa y última dosis.
-- **Comida**: buscador en línea sobre la tabla base (`www/js/foods.js`, valores aproximados), código de barras (Open Food Facts), hidratos a mano y platos guardados.
+- **Comida**: buscador, botones para describir la comida a la IA (sin foto), foto, código de barras e hidratos a mano, y la lista «En tu plato» con botón de ración normal; tabla base (`www/js/foods.js`, valores aproximados), código de barras (Open Food Facts), hidratos a mano y platos guardados.
 - **Cálculo** (explicado en la app, «¿Cómo se calcula?»): comida (hidratos ÷ ratio de la franja) + corrección ((glucosa − objetivo) ÷ sensibilidad) − insulina activa. Con glucosa por debajo del umbral no sugiere dosis. La flecha de tendencia solo avisa, no cambia el número.
 - **Libre**: lee la última glucosa, la flecha y la gráfica por LibreLinkUp; se actualiza sola cada minuto con la app abierta (`www/js/libre.js`). No es una API oficial y solo funciona en la app instalada.
 - **Foto del plato (opcional, desactivada de serie)**: envía la foto a Claude, Gemini, ChatGPT, DeepSeek u otro servicio compatible con OpenAI (OpenRouter, Ollama, LM Studio) (`www/js/vision.js`). Propone alimentos y gramos aproximados que entran marcados como «estimado por foto». Se activa en Ajustes, con la ayuda para conseguir la clave de cada servicio. GitHub Models no está porque GitHub lo retiró el 30 de julio de 2026.

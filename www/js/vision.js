@@ -30,9 +30,9 @@ var Vision = (function () {
 
   var FIELDS = 'Devuelve SOLO un objeto JSON, sin texto alrededor, con esta forma exacta: ' +
     '{"alimentos":[{"nombre":"texto","gramos":numero,"hc_por_100g":numero,"confianza":"alta|media|baja"}],"notas":"texto"}';
-  var SYSTEM = 'Ayudas a una persona con diabetes a contar hidratos de carbono. A partir de la foto de una comida, identifica cada alimento visible y estima su peso en gramos (tal como está en el plato) y sus gramos de hidratos de carbono por 100 g. ' +
-    'Nombres cortos en español, indicando si está cocido, frito, etc. Incluye también los alimentos sin hidratos (carne, pescado, huevo) con 0. Sé prudente: si no puedes distinguir algo, dilo en las notas y marca confianza baja; no inventes alimentos que no se ven. ' +
-    'En las notas pon las dudas importantes (lo que no se ve, salsas…), o cadena vacía. No des consejos de insulina ni de dosis. Si la foto no muestra comida, devuelve la lista vacía y explícalo en las notas.';
+  var SYSTEM = 'Ayudas a una persona con diabetes a contar hidratos de carbono. A partir de la foto o de la descripción de una comida, identifica cada alimento y estima su peso en gramos (tal como se come) y sus gramos de hidratos de carbono por 100 g. Si en una descripción no se dan cantidades, usa raciones normales de un adulto en España. ' +
+    'Nombres cortos en español, indicando si está cocido, frito, etc. Incluye también los alimentos sin hidratos (carne, pescado, huevo) con 0. Sé prudente: si no puedes distinguir algo, dilo en las notas y marca confianza baja; no inventes alimentos que no se ven ni que no se mencionan. ' +
+    'En las notas pon las dudas importantes (lo que no se ve, salsas…), o cadena vacía. No des consejos de insulina ni de dosis. Si no hay comida en la foto o en la descripción, devuelve la lista vacía y explícalo en las notas.';
 
   var TOOL = {
     name: 'registrar_plato',
@@ -122,7 +122,8 @@ var Vision = (function () {
     return '';
   }
 
-  /* cfg: {provider, key, model, url}. b64: JPEG en base64. hint: texto opcional. */
+  /* cfg: {provider, key, model, url}. b64: JPEG en base64, o null para estimar solo a partir del texto.
+     hint: pistas de la foto, o la descripción de la comida cuando no hay foto. */
   async function estimate(b64, hint, cfg) {
     cfg = cfg || {};
     var p = PROVIDERS[cfg.provider] ? cfg.provider : 'claude', P = PROVIDERS[p];
@@ -130,14 +131,16 @@ var Vision = (function () {
     if (P.needsUrl && !cfg.url) throw VisionError('cfg', 'Falta la dirección del servicio en Ajustes.');
     if (!P.needsUrl && !key) throw VisionError('cfg', 'Falta la clave de la API en Ajustes.');
     if (!model) throw VisionError('cfg', 'Falta el nombre del modelo en Ajustes.');
-    var text = 'Estima los alimentos de esta foto.' + (hint ? ' Indicaciones de quien va a comer: ' + String(hint).slice(0, 300) : '');
+    var text = b64 ? 'Estima los alimentos de esta foto.' + (hint ? ' Indicaciones de quien va a comer: ' + String(hint).slice(0, 300) : '')
+      : 'Esto es lo que voy a comer: ' + String(hint || '').slice(0, 800);
+    if (!b64 && !String(hint || '').trim()) throw VisionError('cfg', 'Escribe qué vas a comer.');
 
     if (p === 'claude') {
       return parse(await post('https://api.anthropic.com/v1/messages', {
         'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'
       }, {
         model: model, max_tokens: 1024, system: SYSTEM, tools: [TOOL], tool_choice: { type: 'tool', name: TOOL.name },
-        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: text }] }]
+        messages: [{ role: 'user', content: (b64 ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }] : []).concat([{ type: 'text', text: text }]) }]
       }));
     }
     if (p === 'gemini') {
@@ -145,7 +148,7 @@ var Vision = (function () {
         'content-type': 'application/json', 'x-goog-api-key': key
       }, {
         systemInstruction: { parts: [{ text: SYSTEM + ' ' + FIELDS }] },
-        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64 } }, { text: text }] }],
+        contents: [{ role: 'user', parts: (b64 ? [{ inline_data: { mime_type: 'image/jpeg', data: b64 } }] : []).concat([{ text: text }]) }],
         generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 }
       });
       var c = g.candidates && g.candidates[0];
@@ -161,7 +164,7 @@ var Vision = (function () {
       model: model,
       messages: [
         { role: 'system', content: SYSTEM + ' ' + FIELDS },
-        { role: 'user', content: [{ type: 'text', text: text }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] }
+        { role: 'user', content: b64 ? [{ type: 'text', text: text }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] : text }
       ]
     };
     if (p === 'openai') { body.max_completion_tokens = 4096; body.response_format = { type: 'json_object' }; }
@@ -169,7 +172,9 @@ var Vision = (function () {
     return parseText(textOfChat(await post(base + '/chat/completions', hdr, body)));
   }
 
-  var api = { estimate: estimate, parse: parse, parseText: parseText, fileToJpegBase64: fileToJpegBase64, PROVIDERS: PROVIDERS };
+  function describe(text, cfg) { return estimate(null, text, cfg); }
+
+  var api = { estimate: estimate, describe: describe, parse: parse, parseText: parseText, fileToJpegBase64: fileToJpegBase64, PROVIDERS: PROVIDERS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   return api;
 })();

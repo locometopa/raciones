@@ -1,6 +1,6 @@
 {
   "name": "raciones",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Calculadora personal de raciones de hidratos y bolo, con lectura del sensor Libre",
   "scripts": {

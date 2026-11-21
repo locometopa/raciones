@@ -108,6 +108,12 @@ click(act('manual')); $('#mhg').value = '20'; click(act('mhsave'));
 assert.ok($('.dose b').textContent.startsWith('0'), 'con insulina activa: ' + $('.dose b').textContent);
 click(act('del'));
 assert.ok($('#sum').hidden, 'sin alimentos no hay barra');
+assert.ok(text().includes('Aún está vacío'));
+assert.ok(!act('describe'), 'sin IA no sale Describir'); assert.ok(text().includes('Activa la IA'));
+// Ración normal de un toque
+type($('#qi'), 'manzana'); click($('#qr button[data-act="pick"]'));
+click(act('portion')); assert.strictEqual(S().meal.items[0].grams, '180'); assert.ok(text().includes('= 21,6 g HC'));
+click(act('del'));
 
 // Platos a un toque
 assert.ok(text().includes('Arroz de prueba'));
@@ -139,7 +145,10 @@ assert.ok($('#dlg').textContent.includes('50,4 g'));
 assert.ok(!$('#dlg b b'), 'HTML del nombre escapado');
 click(act('photoadd'));
 assert.strictEqual(S().meal.items.length, before + 2);
-assert.ok(text().includes('estimado por foto')); assert.ok(text().includes('Revísalas antes'));
+assert.ok(text().includes('estimado por IA')); assert.ok(text().includes('Revísalas antes'));
+// Describir sin foto: botón visible con la IA activada y diálogo con texto
+assert.ok(act('describe')); click(act('describe')); assert.ok($('#dtext'));
+click(act('describego')); assert.ok($('#dtext'), 'sin texto no envía'); click(act('close'));
 
 // Nombres con HTML no se interpretan
 click(act('manual')); $('#mhn').value = '<img src=x onerror=alert(1)>'; $('#mhg').value = '1'; click(act('mhsave'));

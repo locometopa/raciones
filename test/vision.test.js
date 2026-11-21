@@ -70,5 +70,17 @@ const check = (r) => { assert.strictEqual(r.items.length, 2); assert.strictEqual
   next = { body: { candidates: [], promptFeedback: { blockReason: 'SAFETY' } } };
   await assert.rejects(Vision.estimate('QUJD', '', { provider: 'gemini', key: 'g' }), (e) => e.code === 'blocked');
 
+  // Descripción sin foto: no se manda imagen en ningún servicio
+  next = { body: { content: [{ type: 'tool_use', input: JSON.parse(json) }] } };
+  check(await Vision.describe('lentejas con chorizo y pan', { provider: 'claude', key: 'k' }));
+  assert.strictEqual(last.body.messages[0].content.length, 1); assert.ok(last.body.messages[0].content[0].text.includes('lentejas'));
+  next = { body: { candidates: [{ content: { parts: [{ text: json }] } }] } };
+  check(await Vision.describe('lentejas', { provider: 'gemini', key: 'g' }));
+  assert.strictEqual(last.body.contents[0].parts.length, 1); assert.ok(!last.body.contents[0].parts[0].inline_data);
+  next = { body: { choices: [{ message: { content: json } }] } };
+  check(await Vision.describe('lentejas', { provider: 'deepseek', key: 'd' }));
+  assert.strictEqual(typeof last.body.messages[1].content, 'string');
+  await assert.rejects(Vision.describe('  ', { provider: 'claude', key: 'k' }), (e) => e.code === 'cfg');
+
   console.log('vision: todas las pruebas pasan');
 })().catch((e) => { console.error(e); process.exit(1); });

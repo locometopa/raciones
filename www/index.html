@@ -121,6 +121,26 @@ video{width:100%;border-radius:12px;background:#000;max-height:40vh}
 #toast.on{opacity:1}
 .day{font-size:13px;color:var(--mut);margin:16px 4px 6px;font-weight:650}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sbox{position:relative}
+.sbox svg{position:absolute;left:14px;top:50%;width:22px;height:22px;transform:translateY(-50%);color:var(--mut);pointer-events:none}
+.sbox input{padding-left:46px;min-height:54px;font-size:17px;border-radius:14px}
+.ways{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.way{display:flex;align-items:center;gap:10px;text-align:left;padding:12px;border-radius:14px;min-height:64px}
+.way svg{width:26px;height:26px;flex:none;color:var(--acc)}
+.way b{display:block;font-size:15px}
+.way small{display:block;font-size:12px;color:var(--mut);line-height:1.25}
+.item2{padding:10px 0;border-top:1px solid var(--line)}
+#items .item2:first-child{border-top:none;padding-top:0}
+.it-top{display:flex;align-items:flex-start;gap:8px}
+.it-top .nm{flex:1;min-width:0}
+.it-top .nm b{display:block;font-weight:600;overflow-wrap:anywhere}
+.it-top .nm small{color:var(--mut);font-size:13px}
+.it-qty{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.qty{display:flex;align-items:center;gap:6px;margin:0;color:var(--mut);font-size:14px}
+.qty input.n{width:84px;font-size:18px;font-weight:650}
+.it-qty .hc{margin-left:auto;font-size:16px}
+.chip.mini{min-height:36px;padding:6px 12px;font-size:13px}
+.estm{color:var(--warn)}
 .how{margin-top:12px;font-size:14px;color:var(--mut)}
 .how summary{color:var(--acc);cursor:pointer;padding:6px 0;font-size:15px}
 .how ol{padding-left:20px;margin:6px 0}
