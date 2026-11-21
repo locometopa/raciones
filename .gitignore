@@ -4,3 +4,4 @@ android/
 *.jks
 *.keystore
 firma/
+www/js/capacitor.js

@@ -6,9 +6,10 @@ const { JSDOM } = require('jsdom');
 const www = path.join(__dirname, '..', 'www');
 const html = fs.readFileSync(path.join(www, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '');
 
-function boot(stored) {
+function boot(stored, pre) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://localhost/', pretendToBeVisual: true });
   const w = dom.window;
+  if (pre) pre(w);
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
@@ -253,4 +254,46 @@ w.close();
   w.close();
 }
 
-console.log('interfaz: todas las pruebas pasan');
+// ---- 0.8: Tresiba con dosis fija y aviso diario ----
+{
+  const calls = { schedule: [], cancel: 0, actions: null, listener: null };
+  const fake = {
+    registerActionTypes: async (o) => { calls.actions = o; },
+    addListener: (ev, fn) => { calls.listener = fn; return Promise.resolve({ remove() {} }); },
+    cancel: async () => { calls.cancel++; },
+    checkPermissions: async () => ({ display: 'granted' }),
+    requestPermissions: async () => ({ display: 'granted' }),
+    schedule: async (o) => { calls.schedule.push(o.notifications); }
+  };
+  const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok', basalDose: '30', basalTime: '23:59', basalRemind: '1' };
+  w = boot({ cfg, log: [] }, (win) => { win.Capacitor = { isNativePlatform: () => true, registerPlugin: () => fake }; });
+  d = w.document;
+  const q = (sel) => d.querySelector(sel), vt = () => q('#view').textContent;
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+  (async () => {
+    await tick();
+    assert.ok(calls.actions.types[0].actions[0].id === 'apuntar');
+    let last = calls.schedule[calls.schedule.length - 1];
+    assert.ok(last.length >= 6 && last.length <= 7, 'avisos de 7 días: ' + last.length);
+    assert.strictEqual(new Date(last[0].schedule.at).getHours(), 23); assert.ok(last[0].body.includes('30 U'));
+    assert.strictEqual(last[0].actionTypeId, 'BASAL');
+    // Un toque apunta 30 U y el aviso de hoy desaparece
+    assert.ok(vt().includes('Apuntar 30 U')); k(q('[data-act="basalquick"]')); await tick();
+    const lb = w.__raciones.state().log.filter((e) => e.ins === 'basal');
+    assert.strictEqual(lb.length, 1); assert.strictEqual(lb[0].u, 30);
+    assert.ok(vt().includes('✓ hoy')); assert.ok(!q('[data-act="basalquick"]'));
+    last = calls.schedule[calls.schedule.length - 1];
+    assert.ok(new Date(last[0].schedule.at).getDate() !== new Date().getDate(), 'hoy ya está: empieza mañana');
+    // Desde el aviso con «Apuntar» otra vez: pregunta para no duplicar
+    calls.listener({ actionId: 'apuntar', notification: { extra: { kind: 'basal' } } });
+    assert.ok(q('#dlg').textContent.includes('Ya apuntaste')); k(q('[data-act="close"]'));
+    assert.strictEqual(w.__raciones.state().log.filter((e) => e.ins === 'basal').length, 1);
+    // Ajustes: campos de dosis fija, hora y aviso
+    k(q('[data-tab="ajustes"]')); assert.ok(q('[data-s="cfg.basalDose"]')); assert.ok(q('[data-s="cfg.basalTime"]')); assert.ok(q('[data-s="cfg.basalRemind"]'));
+    const before = calls.cancel; q('[data-s="cfg.basalRemind"]').value = '0'; q('[data-s="cfg.basalRemind"]').dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
+    assert.ok(calls.cancel > before);
+    w.close();
+    console.log('interfaz: todas las pruebas pasan');
+  })().catch((e) => { console.error(e); process.exit(1); });
+}

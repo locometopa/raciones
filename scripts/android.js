@@ -6,6 +6,8 @@ const { execSync } = require('child_process');
 const root = path.join(__dirname, '..');
 const run = (cmd) => execSync(cmd, { cwd: root, stdio: 'inherit' });
 
+// Núcleo JS de Capacitor (registerPlugin) para usar plugins sin empaquetador
+fs.copyFileSync(path.join(root, 'node_modules/@capacitor/core/dist/capacitor.js'), path.join(root, 'www/js/capacitor.js'));
 if (!fs.existsSync(path.join(root, 'android'))) run('npx cap add android');
 run('npx cap sync android');
 
