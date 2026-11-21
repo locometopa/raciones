@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.9.0';
+  var VERSION = '0.10.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -33,18 +33,20 @@
       now: { v: '', trend: 0, t: null, src: '' },
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
+      coach: { used: [], unlocked: [], tipDate: '', tipId: '', ach: [], reportShared: 0, newTip: 0 },
       meal: { items: [], slot: '' }
     };
   }
   function merge(d, j) {
     if (!j || typeof j !== 'object') return d;
     var ratios = Object.assign({}, d.cfg.ratios, j.cfg && j.cfg.ratios);
-    ['cfg', 'libre', 'ai', 'now', 'meal', 'backup'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
+    ['cfg', 'libre', 'ai', 'now', 'meal', 'backup', 'coach'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
     d.cfg.ratios = ratios;
     ['custom', 'plates', 'log', 'recent', 'hist'].forEach(function (k) { if (Array.isArray(j[k])) d[k] = j[k]; });
     if (j.lastQty && typeof j.lastQty === 'object') d.lastQty = j.lastQty;
     ['hipoCheck', 'missedOff'].forEach(function (k) { if (typeof j[k] === 'number') d[k] = j[k]; });
     if (!Array.isArray(d.meal.items)) d.meal.items = [];
+    ['used', 'unlocked', 'ach'].forEach(function (k) { if (!Array.isArray(d.coach[k])) d.coach[k] = []; });
     ['keys', 'models'].forEach(function (k) { if (!d.ai[k] || typeof d.ai[k] !== 'object') d.ai[k] = {}; });
     if (!Vision.PROVIDERS[d.ai.provider]) d.ai.provider = 'claude';
     // 0.2–0.3 guardaban una sola clave, de Claude
@@ -141,6 +143,7 @@
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
+    h += coachHTML(x);
     var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
     h += hipoCardHTML();
     if (!S.hipoCheck) h += '<button class="lowbtn' + (lowish ? ' hot' : '') + '" data-act="hipo">Estoy bajo</button>';
@@ -695,7 +698,7 @@
   function basalDoneToday() { var lb = lastBasal(), d = new Date(); d.setHours(0, 0, 0, 0); return !!(lb && lb.t >= d.getTime()); }
   function logBasal(u) {
     S.log.push({ t: Date.now(), ins: 'basal', u: u, carbs: 0, name: basalName() });
-    save(); render(); scheduleBasal(); toast(basalName() + ' apuntada: ' + fu(u));
+    save(); render(); scheduleBasal(); toast(basalName() + ' apuntada: ' + fu(u)); checkAch(false);
   }
   /* Un toque: apunta la dosis fija. Si ya hay una en las últimas 12 h, pregunta antes para no duplicar. */
   function quickBasal(fromNotif) {
@@ -916,10 +919,92 @@
     readLibre(true);
   }
 
+  // ---------- ánimos, trucos y logros ----------
+  function dayKey(t) { var d = new Date(t || Date.now()); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function histPairs() { return S.hist; }
+  function coachStats() { return Coach.stats({ hist: histPairs(), now: Date.now(), lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180 }); }
+  function mealsCount() { return S.log.filter(function (e) { return e.ins !== 'basal' && e.ins !== 'hipo' && e.carbs > 0; }).length; }
+  function basalStreak() {
+    var days = {}, n = 0, d = new Date(); d.setHours(0, 0, 0, 0);
+    S.log.forEach(function (e) { if (e.ins === 'basal') days[dayKey(e.t)] = 1; });
+    if (!days[dayKey(d.getTime())]) d.setDate(d.getDate() - 1);
+    while (days[dayKey(d.getTime())] && n < 400) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  }
+  function tipCtx() {
+    var now = Date.now(), lo = num(S.cfg.hypo) || 70, hi = num(S.cfg.rangeHigh) || 180;
+    var recentLow = S.log.some(function (e) { return e.ins === 'hipo' && now - e.t < 7 * 864e5; }) || S.hist.some(function (p) { return now - p[0] < 3 * 864e5 && p[1] < lo; });
+    var highAfter = S.log.filter(function (e) { return e.post && !e.post.none && now - e.t < 14 * 864e5 && e.post.g2 > hi; }).length >= 2;
+    return { rapid: S.cfg.rapid, basal: S.cfg.basal, recentLow: recentLow, highAfterMeals: highAfter, meals: mealsCount(), plates: S.plates.length };
+  }
+  function unlockTip(why) {
+    var t = Coach.nextTip(S.coach.unlocked, tipCtx()); if (!t) return null;
+    S.coach.unlocked.push(t.id); S.coach.tipId = t.id; S.coach.newTip = 1; save();
+    if (why) toast('💡 ' + why + ': ' + (t.k === 'Curiosidad' ? 'nueva curiosidad' : 'nuevo truco') + ' en Aprende');
+    return t;
+  }
+  /* Cada día que abres la app se desbloquea un truco o curiosidad nuevo. */
+  function coachDaily() {
+    var k = dayKey();
+    if (S.coach.used.indexOf(k) < 0) { S.coach.used.push(k); if (S.coach.used.length > 400) S.coach.used = S.coach.used.slice(-400); }
+    if (S.coach.tipDate !== k) { S.coach.tipDate = k; unlockTip(''); }
+    save(); checkAch(true);
+  }
+  function achState() { return { meals: mealsCount(), plates: S.plates.length, daysUsed: S.coach.used.length, basalStreak: basalStreak(), stats: coachStats(), reportShared: S.coach.reportShared }; }
+  /* Avisa de los logros nuevos (la primera vez solo los marca, sin felicitar por lo que ya había). */
+  function checkAch(quiet) {
+    var got = Coach.achievements(achState()).filter(function (a) { return a.ok && S.coach.ach.indexOf(a.id) < 0; });
+    if (!got.length) return;
+    var first = !S.coach.achInit;
+    got.forEach(function (a) { S.coach.ach.push(a.id); });
+    S.coach.achInit = 1; save();
+    if (!first || !quiet) { var a = got[got.length - 1]; setTimeout(function () { toast('🏅 Logro: ' + a.t); }, 400); if (!quiet) unlockTip(''); }
+  }
+  function ateRecently() { return S.log.some(function (e) { return e.carbs > 0 && Date.now() - e.t < 2 * 3600e3; }); }
+  function coachMsg(x) { return Coach.message({ g: x.g.v, trend: +S.now.trend || 0, old: x.old, stats: coachStats(), ateRecently: ateRecently(), now: Date.now() }); }
+  function coachHTML(x) {
+    var m = coachMsg(x), t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
+    return '<div class="coach ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>' +
+      (t ? '<button class="tipline" data-act="goto" data-v="aprende"><span class="tk">' + (S.coach.newTip ? 'Nuevo · ' : '') + esc(t.k) + ' del día</span><span class="tx">' + esc(t.x) + '</span></button>' : '');
+  }
+  var WATCH = '<details class="how"><summary>Ver la glucosa en tu Galaxy Watch</summary><p>iocrino no puede pintar en la esfera del reloj, pero hay una app gratuita que lo hace muy bien leyendo de LibreLinkUp: <b>GlucoDataHandler</b>.</p><ol>' +
+    '<li>En el móvil, instala <b>GlucoDataHandler</b> desde Google Play.</li>' +
+    '<li>Ábrela y en <b>Fuentes</b> activa <b>LibreLinkUp</b> con el mismo correo y contraseña que usas en iocrino.</li>' +
+    '<li>En el reloj, abre Play Store, busca <b>GlucoDataHandler</b> e instálala (se empareja sola con la del móvil).</li>' +
+    '<li>En el reloj, mantén pulsada la esfera → <b>Personalizar</b> → toca un hueco de complicación y elige <b>GlucoDataHandler</b> (glucosa, flecha o glucosa + hora).</li>' +
+    '<li>Si quieres, activa en GlucoDataHandler las alarmas de bajada y subida: vibran en la muñeca.</li></ol>' +
+    '<p>Funciona en los Galaxy Watch con Wear OS (Watch4 y posteriores). Los modelos antiguos con Tizen (Watch3, Active2 y anteriores) no son compatibles.</p>' +
+    '<p>Además, los avisos de iocrino (la lenta, «vuelve a mirar en 15 minutos») ya te llegan al reloj solos si tienes activadas las notificaciones del móvil en la app Galaxy Wearable.</p></details>';
+  function vLearn() {
+    var x = gView(), st = coachStats(), m = coachMsg(x), h = '';
+    S.coach.newTip = 0; save();
+    h += '<div class="coach big ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>';
+    h += '<section class="card"><h2>Tu día y tu semana</h2>' + (st.today.n >= 4 ? Coach.donut(st.today.tir, 'Hoy') : '<p class="mut">Cuando haya lecturas del Libre de hoy verás aquí tu tiempo en rango.</p>') +
+      (st.week.some(function (d) { return d.tir != null; }) ? '<div class="lab">Últimos 7 días · % en rango</div>' + Coach.weekBars(st.week) : '') +
+      (st.streak ? '<p class="fine">Racha: ' + st.streak + (st.streak === 1 ? ' día' : ' días') + ' seguidos por encima del 70 %.</p>' : '') + '</section>';
+    var t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
+    if (t) h += '<section class="card"><h2>' + esc(t.k) + ' del día</h2><p style="margin:0;font-size:16px;line-height:1.5">' + esc(t.x) + '</p><p class="fine">Cada día que abres iocrino se desbloquea uno nuevo. Llevas ' + S.coach.unlocked.length + ' de ' + Coach.TIPS.length + '.</p></section>';
+    h += '<section class="card"><h2>Infografías</h2><div class="igl">' + Coach.infographics().map(function (g) { return '<button data-act="ig" data-v="' + g.id + '">' + esc(g.t) + '</button>'; }).join('') + '</div></section>';
+    var tips = S.coach.unlocked.map(Coach.tip).filter(Boolean).reverse();
+    h += '<section class="card"><h2>Trucos y curiosidades · ' + tips.length + ' de ' + Coach.TIPS.length + '</h2>' +
+      (tips.length ? tips.map(function (q) { return '<div class="tipi"><span class="tk">' + esc(q.k) + '</span>' + esc(q.x) + '</div>'; }).join('') : '<p class="mut">Aún ninguno.</p>') +
+      (tips.length < Coach.TIPS.length ? '<p class="fine">Siguen saliendo con el uso: uno cada día, y otro extra con cada logro.</p>' : '') + '</section>';
+    var ach = Coach.achievements(achState());
+    h += '<section class="card"><h2>Logros · ' + ach.filter(function (a) { return a.ok; }).length + ' de ' + ach.length + '</h2><div class="achs">' +
+      ach.map(function (a) { return '<div class="ach' + (a.ok ? ' ok' : '') + '"><span class="am">' + (a.ok ? '🏅' : '○') + '</span><b>' + esc(a.t) + '</b><small>' + esc(a.d) + '</small></div>'; }).join('') + '</div></section>';
+    h += '<section class="card"><h2>En tu reloj</h2>' + WATCH + '</section>';
+    h += '<p class="fine" style="text-align:center">Consejos generales para animarte. No sustituyen lo que te diga tu equipo de diabetes.</p>';
+    view.innerHTML = h;
+  }
+  function dlgIg(id) {
+    var g = id === 'hoy' ? null : Coach.infographic(id); if (!g) return;
+    openDlg('<h3>' + esc(g.t) + '</h3>' + g.svg + '<p class="mut" style="font-size:14px">' + esc(g.c) + '</p><div class="acts"><button class="pri" data-act="close">Vale</button></div>');
+  }
+
   // ---------- render y eventos ----------
   function render() {
     Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
-    if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else vSettings();
+    if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else if (tab === 'aprende') vLearn(); else vSettings();
     if (tab !== 'comida') renderSum();
   }
 
@@ -992,7 +1077,7 @@
         break;
       case 'useplate': usePlate(i); break;
       case 'saveplate': openDlg('<h3>Guardar como plato</h3><label>Nombre del plato</label><input id="pn" placeholder="Desayuno de diario…"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="platesave">Guardar</button></div>'); break;
-      case 'platesave': { var pn = $('#pn').value.trim(); if (!pn) { toast('Ponle un nombre'); break; } S.plates.push({ name: pn, items: JSON.parse(JSON.stringify(S.meal.items)) }); save(); closeDlg(); render(); toast('Plato guardado'); break; }
+      case 'platesave': { var pn = $('#pn').value.trim(); if (!pn) { toast('Ponle un nombre'); break; } S.plates.push({ name: pn, items: JSON.parse(JSON.stringify(S.meal.items)) }); save(); closeDlg(); render(); toast('Plato guardado'); checkAch(false); break; }
       case 'delplate': confirmDlg('¿Borrar el plato «' + S.plates[i].name + '»?', function () { S.plates.splice(i, 1); save(); render(); }); break;
       case 'log': {
         var c = compute();
@@ -1005,7 +1090,7 @@
         var cc = compute(), iob0 = activeInsulin();
         S.log.push({ t: Date.now(), ins: 'rapida', iob: Math.round(iob0 * 100) / 100, slot: cc.slot, carbs: Math.round(cc.carbs * 10) / 10, glucose: cc.g.v, trend: +S.now.trend || 0, sug: cc.r.ok ? cc.r.total : null, u: u, items: S.meal.items.map(function (x) { return x.name; }).join(', ') });
         remember(S.meal.items);
-        S.meal = { items: [], slot: '' }; save(); closeDlg(); tab = 'ahora'; render(); window.scrollTo(0, 0); toast('Registrado'); break;
+        S.meal = { items: [], slot: '' }; save(); closeDlg(); tab = 'ahora'; render(); window.scrollTo(0, 0); toast('Registrado'); checkAch(false); break;
       }
       case 'basalquick': quickBasal(false); break;
       case 'basal': {
@@ -1021,6 +1106,7 @@
         logBasal(bv); closeDlg(); break;
       }
       case 'guide': dlgGuide(); break;
+      case 'ig': dlgIg(b.dataset.v); break;
       case 'ratioapply': {
         var sl = b.dataset.slot, R = Learn.ratios(S.log, { now: Date.now(), days: 30, mode: S.cfg.ratioMode, ratios: S.cfg.ratios, isf: S.cfg.isf, dia: S.cfg.dia, low: num(S.cfg.hypo) || 70, changes: S.cfg.ratioLog || [] })[sl];
         if (!R || !R.newVal) break;
@@ -1053,7 +1139,7 @@
       case 'bknasrestore': nasRestore(); break;
       case 'report': repDays = 14; dlgReport(); break;
       case 'repdays': repDays = +b.dataset.v; dlgReport(); break;
-      case 'repshare': shareText('Informe de iocrino', Report.text(Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: Date.now(), days: repDays }), 'iocrino')); break;
+      case 'repshare': S.coach.reportShared = 1; save(); checkAch(false); shareText('Informe de iocrino', Report.text(Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: Date.now(), days: repDays }), 'iocrino')); break;
       case 'repcsv': shareFile('iocrino-registro-' + today() + '.csv', csv(), 'Registro de iocrino'); break;
       case 'dose': dlgDose(); break;
       case 'dosekind': Array.prototype.forEach.call(document.querySelectorAll('#dk .chip'), function (c) { c.classList.toggle('on', c === b); }); break;
@@ -1100,9 +1186,10 @@
     inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) analyzePhoto(f); });
   });
   dlg.addEventListener('close', function () { stopScan(); wzOpen = false; });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { coachDaily(); autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); if (tab === 'ahora' && !dlg.open) render(); } });
   setInterval(function () { if (document.hidden) return; autoLibre(); refreshGlucoseUI(); }, 30000);
 
+  coachDaily();
   render();
   if (!S.cfg.setup && !configured()) { wz = 0; renderWz(); }
   initNotifications();
@@ -1118,5 +1205,5 @@
     rd.readAsText(f);
   });
   autoLibre();
-  window.__raciones = { state: function () { return S; }, missedDose: missedDose, nasBackup: nasBackup, addHist: addHist, showEstimate: showEstimate, version: VERSION, render: render };
+  window.__raciones = { state: function () { return S; }, missedDose: missedDose, nasBackup: nasBackup, addHist: addHist, showEstimate: showEstimate, version: VERSION, render: render, coachDaily: coachDaily, checkAch: checkAch };
 })();

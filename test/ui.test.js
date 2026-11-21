@@ -13,7 +13,7 @@ function boot(stored, pre) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;
@@ -295,6 +295,7 @@ w.close();
     assert.ok(calls.cancel > before);
     w.close();
     await v09();
+    v010();
     console.log('interfaz: todas las pruebas pasan');
   })().catch((e) => { console.error(e); process.exit(1); });
 }
@@ -357,5 +358,37 @@ async function v09() {
   // Error del NAS: mensaje claro
   w.fetch = async () => ({ status: 401, json: async () => ({}) });
   await w.__raciones.nasBackup(true); assert.ok(w.__raciones.state().backup.err.includes('usuario o la contraseña'));
+  w.close();
+}
+
+// ---- 0.10: ánimos, trucos, logros, infografías y reloj ----
+function v010() {
+  const H = 3600e3, M = 60000, t0 = Date.now();
+  const hist = []; for (let t = t0 - 4 * H; t <= t0 - M; t += 15 * M) hist.push([t, 115]);
+  const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok', basalDose: '30' };
+  const log = []; for (let k = 0; k < 9; k++) log.push({ t: t0 - (k + 1) * 6 * H, ins: 'rapida', slot: 'comida', carbs: 40, u: 4 });
+  const w = boot({ cfg, log, hist, now: { v: '115', trend: 3, t: t0 - M, src: 'libre' } });
+  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent;
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  const st = w.__raciones.state();
+  // Ánimo en rango y truco del día (contextual: Fiasp/Tresiba)
+  assert.ok(q('.coach.ok'), 'mensaje de ánimo en rango'); assert.ok(/rango/.test(q('.coach').textContent));
+  assert.strictEqual(st.coach.unlocked.length, 1); assert.ok(q('.tipline'));
+  assert.strictEqual(st.coach.used.length, 1);
+  // Logros ya conseguidos al instalar: se marcan sin felicitar
+  assert.ok(st.coach.ach.includes('primera')); assert.ok(!st.coach.ach.includes('comidas10'));
+  // El décimo registro da logro y un truco extra
+  w.__raciones.state().meal.items = [{ name: 'Pan', hc100: 50, grams: '40' }];
+  k(q('[data-tab="comida"]')); k(q('[data-act="log"]')); q('#ru').value = '2'; k(q('[data-act="logsave"]'));
+  assert.ok(st.coach.ach.includes('comidas10')); assert.strictEqual(st.coach.unlocked.length, 2);
+  // Pestaña Aprende
+  k(q('[data-tab="aprende"]'));
+  assert.ok(vt().includes('Infografías')); assert.ok(vt().includes('Trucos y curiosidades · 2 de')); assert.ok(vt().includes('GlucoDataHandler'));
+  assert.ok(q('svg.ig'), 'donut de hoy'); assert.ok(vt().includes('Logros · '));
+  k(q('[data-act="ig"][data-v="racion"]')); assert.ok(q('#dlg').textContent.includes('¿Qué es una ración?')); assert.ok(q('#dlg svg.ig'));
+  k(q('[data-act="close"]'));
+  // Glucosa baja: primero tratar
+  st.now = { v: '62', trend: 2, t: Date.now(), src: 'manual' }; k(q('[data-tab="ahora"]'));
+  assert.ok(q('.coach.bad')); assert.ok(q('.coach').textContent.includes('trata la bajada'));
   w.close();
 }
