@@ -61,4 +61,18 @@ assert.ok(C.lowStreak(bad, now));
 // Muchos trucos, sin repetir ids, y los de ánimo salen primero si estás de bajón
 assert.ok(C.TIPS.length >= 90);
 assert.strictEqual(C.nextTip([], { lowMood: true }).k, 'Ánimo');
+// Previsión: bajando 1,5 por minuto desde 100 → en 20 min por debajo de 70
+const falling = []; for (let k = 15; k >= 0; k--) falling.push([now - k * 60000, 100 - (15 - k) * 1.5 + 22.5]);
+const pr = C.predict(falling, now); assert.ok(Math.abs(pr.slope + 1.5) < 0.01); assert.strictEqual(pr.now, 100 - 22.5 + 22.5);
+const ls = C.lowSoon(falling.map((p) => [p[0], p[1] - 20]), now, 70); assert.ok(ls && ls.in20 < 70);
+assert.strictEqual(C.lowSoon(falling, now, 70), null, '100 bajando a 70 justo: aún no');
+assert.strictEqual(C.lowSoon(series(now - 20 * 60000, now, () => 90), now, 70), null, 'estable');
+assert.ok(C.message({ g: 80, lowSoon: { in20: 55 }, stats: {}, now }).text.includes('20 min'));
+// Resumen semanal y patrones
+const wh = []; for (let t = now - 14 * D; t <= now; t += 5 * 60000) { const h = new Date(t).getHours(); wh.push([t, h >= 3 && h < 6 ? 175 : h >= 0 && h < 2 ? 120 : (t > now - 7 * D ? 130 : 200)]); }
+const wl = []; for (let d = 1; d <= 6; d++) { wl.push({ t: now - d * D, ins: 'rapida', slot: 'cena', carbs: 50, u: 5, glucose: 120, post: { g2: 220 } }); wl.push({ t: now - d * D - 5 * H, ins: 'rapida', slot: 'comida', carbs: 50, u: 5, glucose: 120, post: { g2: 140 } }); }
+const wr = C.weekly({ hist: wh, log: wl, now });
+assert.ok(wr.tir > wr.tirPrev); assert.ok(wr.patterns.some((p) => p.k === 'trend' && p.x.includes('mejorado')));
+assert.ok(wr.patterns.some((p) => p.k === 'meal' && p.x.includes('la cena'))); assert.ok(wr.patterns.some((p) => p.k === 'dawn'));
+assert.ok(C.weeklyText(wr).includes('% en rango'));
 console.log('coach: todas las pruebas pasan');

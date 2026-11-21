@@ -57,6 +57,7 @@ var Coach = (function () {
     if (c.g == null || c.old) return { tone: 'info', text: pick(['Lee el Libre o escribe tu glucosa para ver cómo vas.', 'Sin una lectura reciente no puedo decirte nada. Toca la tarjeta para leerla.'], seed) };
     var g = c.g, tr = +c.trend || 0;
     if (g < 70) return { tone: 'bad', text: pick(['Primero lo primero: trata la bajada. Lo demás puede esperar.', 'Bajada a la vista. Toma algo de azúcar y vuelve a mirar en 15 minutos. Lo estás haciendo bien al estar pendiente.'], seed) };
+    if (c.lowSoon) return { tone: 'warn', text: 'Vas bajando: al ritmo de los últimos minutos, en unos 20 min podrías estar en ' + Math.max(40, c.lowSoon.in20) + '. Ten azúcar a mano y vuelve a mirar pronto.' };
     if (g < 90 && (tr === 1 || tr === 2)) return { tone: 'warn', text: 'Vas bajando y cerca de 70. Ten algo de azúcar a mano por si acaso.' };
     if (g > 250) {
       if (s.highFor >= H) return { tone: 'warn', text: 'Llevas ' + dur(s.highFor) + ' por encima de 250. Comprueba que no se te ha olvidado ninguna dosis y bebe agua. Si tu equipo te indicó medir cetonas, es buen momento.' };
@@ -316,7 +317,69 @@ var Coach = (function () {
   }
   function moodFace(m) { for (var i = 0; i < MOODS.length; i++) if (MOODS[i][0] === m) return MOODS[i][1]; return ''; }
 
-  var api = { MOODS: MOODS, FEEL: FEEL, moodReply: moodReply, moodStats: moodStats, lowStreak: lowStreak, moodFace: moodFace, stats: stats, message: message, nextTip: nextTip, tip: tip, TIPS: TIPS, achievements: achievements, donut: donut, weekBars: weekBars, infographics: infographics, infographic: infographic, dur: dur };
+  /* ---------- previsión a 20 minutos ---------- */
+  /* Pendiente (mg/dL/min) por mínimos cuadrados con las lecturas de los últimos 20 min. */
+  function predict(hist, now) {
+    if (!hist || !hist.length) return null;
+    var last = hist[hist.length - 1];
+    if ((now || Date.now()) - last[0] > 20 * 60000) return null;
+    var pts = hist.filter(function (p) { return p[0] >= last[0] - 20 * 60000; });
+    if (pts.length < 3 || last[0] - pts[0][0] < 8 * 60000) return null;
+    var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach(function (p) { var x = (p[0] - last[0]) / 60000; sx += x; sy += p[1]; sxx += x * x; sxy += x * p[1]; });
+    var d = n * sxx - sx * sx; if (!d) return null;
+    var sl = (n * sxy - sx * sy) / d;
+    return { slope: sl, now: last[1], in20: Math.round(last[1] + sl * 20) };
+  }
+  /* ¿Bajada en camino? Aún no bajo, pero en 20 min sí al ritmo actual. */
+  function lowSoon(hist, now, hypo) {
+    var p = predict(hist, now); hypo = hypo || 70;
+    if (!p || p.now < hypo || p.now > hypo + 60 || p.slope > -1 || p.in20 >= hypo) return null;
+    return p;
+  }
+
+  /* ---------- resumen semanal y patrones ---------- */
+  var SLOTN = { desayuno: 'el desayuno', comida: 'la comida', merienda: 'la merienda', cena: 'la cena' };
+  function weekly(o) {
+    var now = o.now || Date.now(), lo = o.lo || 70, hi = o.hi || 180, hypo = o.hypo || 70;
+    var from = now - 7 * D, prev = now - 14 * D;
+    var w = (o.hist || []).filter(function (p) { return p[0] >= from; }), pw = (o.hist || []).filter(function (p) { return p[0] >= prev && p[0] < from; });
+    var tir = function (a) { return a.length ? a.filter(function (p) { return p[1] >= lo && p[1] <= hi; }).length / a.length * 100 : null; };
+    var mean = w.length ? w.reduce(function (s, p) { return s + p[1]; }, 0) / w.length : null;
+    // Episodios de bajada (separados al menos 30 min)
+    var lows = 0, lastLow = -1e15, lowHours = [0, 0, 0, 0, 0, 0];
+    w.forEach(function (p) { if (p[1] < hypo) { if (p[0] - lastLow > 30 * 60000) { lows++; lowHours[Math.floor(new Date(p[0]).getHours() / 4)]++; } lastLow = p[0]; } });
+    // Por día: mejor día
+    var days = {};
+    w.forEach(function (p) { var k = new Date(p[0]).toDateString(); (days[k] = days[k] || []).push(p); });
+    var best = null; Object.keys(days).forEach(function (k) { if (days[k].length < 30) return; var t = tir(days[k]); if (!best || t > best.tir) best = { day: days[k][0][0], tir: t }; });
+    // Subida tras cada franja (2 h después menos antes)
+    var meals = (o.log || []).filter(function (e) { return (!e.ins || e.ins === 'rapida') && e.carbs > 0 && e.t >= now - 14 * D; });
+    var rise = {};
+    meals.forEach(function (e) { if (!e.post || e.post.none || e.post.g2 == null || e.glucose == null) return; (rise[e.slot] = rise[e.slot] || []).push(e.post.g2 - e.glucose); });
+    var avg = function (a) { return a.reduce(function (x, y) { return x + y; }, 0) / a.length; };
+    var pats = [];
+    var rs = Object.keys(rise).filter(function (k) { return rise[k].length >= 3; }).map(function (k) { return [k, avg(rise[k]), rise[k].length]; }).sort(function (a, b) { return b[1] - a[1]; });
+    if (rs.length >= 2 && rs[0][1] - rs[rs.length - 1][1] >= 30) pats.push({ k: 'meal', x: 'Después de ' + SLOTN[rs[0][0]] + ' subes más que en el resto (+' + Math.round(rs[0][1]) + ' mg/dL a las 2 h, de media). Revisa con tu equipo el ratio de esa franja o el momento del pinchazo.' });
+    else if (rs.length && rs[0][1] >= 60) pats.push({ k: 'meal', x: 'Después de ' + SLOTN[rs[0][0]] + ' sueles subir bastante (+' + Math.round(rs[0][1]) + ' mg/dL a las 2 h).' });
+    var mx = Math.max.apply(null, lowHours);
+    if (lows >= 2 && mx >= 2 && mx / lows >= 0.5) { var b4 = lowHours.indexOf(mx) * 4; pats.push({ k: 'low', x: 'Tus bajadas se concentran entre las ' + b4 + ':00 y las ' + (b4 + 4) + ':00 (' + mx + ' de ' + lows + '). Mira qué suele pasar antes: dosis, ejercicio o comida.' }); }
+    var night = w.filter(function (p) { var h = new Date(p[0]).getHours(); return h >= 3 && h < 6; }), morn = w.filter(function (p) { var h = new Date(p[0]).getHours(); return h >= 0 && h < 2; });
+    if (night.length >= 20 && morn.length >= 10) {
+      var dn = avg(night.map(function (p) { return p[1]; })) - avg(morn.map(function (p) { return p[1]; }));
+      if (dn >= 30) pats.push({ k: 'dawn', x: 'De madrugada (3 a 6 h) subes unos ' + Math.round(dn) + ' mg/dL sin comer: puede ser el fenómeno del alba. Coméntalo con tu equipo.' });
+    }
+    var ex = (o.log || []).filter(function (e) { return e.ins === 'ejercicio' && e.t >= from; }).length;
+    var t1 = tir(w), t0 = tir(pw);
+    if (t1 != null && t0 != null && pw.length >= 200) pats.unshift({ k: 'trend', x: t1 - t0 >= 3 ? 'Has mejorado: ' + Math.round(t1) + ' % en rango frente a ' + Math.round(t0) + ' % la semana anterior. ¡Bien!' : t0 - t1 >= 3 ? 'Esta semana ha sido algo peor que la anterior (' + Math.round(t1) + ' % frente a ' + Math.round(t0) + ' %). Le pasa a todo el mundo; mira los patrones de abajo.' : 'Semana parecida a la anterior (' + Math.round(t1) + ' % en rango).' });
+    return { n: w.length, tir: t1, tirPrev: t0, mean: mean, lows: lows, best: best, meals: meals.filter(function (e) { return e.t >= from; }).length, exercise: ex, patterns: pats };
+  }
+  function weeklyText(r) {
+    if (!r.n) return 'Aún no hay lecturas de esta semana.';
+    return Math.round(r.tir) + ' % en rango · media ' + Math.round(r.mean) + ' mg/dL · ' + r.lows + (r.lows === 1 ? ' bajada' : ' bajadas') + ' · ' + r.meals + ' comidas apuntadas';
+  }
+
+  var api = { predict: predict, lowSoon: lowSoon, weekly: weekly, weeklyText: weeklyText, MOODS: MOODS, FEEL: FEEL, moodReply: moodReply, moodStats: moodStats, lowStreak: lowStreak, moodFace: moodFace, stats: stats, message: message, nextTip: nextTip, tip: tip, TIPS: TIPS, achievements: achievements, donut: donut, weekBars: weekBars, infographics: infographics, infographic: infographic, dur: dur };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   return api;
 })();

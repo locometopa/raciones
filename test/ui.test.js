@@ -411,7 +411,7 @@ async function v011() {
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // Lo leído con la app cerrada entra en el historial; y se manda la config a la parte nativa
   assert.ok(st.hist.some((p) => p[1] === 160)); assert.strictEqual(st.now.v, '160');
-  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true && set[1].persist === true); assert.strictEqual(st.bg.persist, '1');
+  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true && set[1].persist === true && set[1].predict === true && set[1].xdrip === false && Array.isArray(set[1].mealTimes)); assert.strictEqual(st.bg.persist, '1');
   st.bg.persist = '0';
   // Sensor a punto de acabar: aviso en Ahora y avisos programados
   assert.ok(vt().includes('Sensor')); assert.ok(sched.some((n) => n.id === 7301));
@@ -428,7 +428,8 @@ async function v011() {
   assert.ok(vt().includes('Ejercicio'));
   st.meal.items = [{ name: 'Pan', hc100: 50, grams: '40' }]; k(q('[data-tab="comida"]')); assert.ok(vt().includes('Hiciste ejercicio'));
   // Ajustes: material y segundo plano
-  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('Con la app cerrada'));
+  k(q('[data-tab="registro"]')); k(q('[data-act="logseg"][data-v="analisis"]')); assert.ok(vt().includes('Tus últimos 7 días')); k(q('[data-act="logseg"][data-v="diario"]'));
+  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('xDrip+')); assert.ok(vt().includes('Con la app cerrada'));
   k(q('[data-act="kitnew"][data-v="rapidT"]')); k(q('[data-act="yes"]')); assert.ok(st.kit.rapidT > 0); await tick(); assert.ok(sched.some((n) => n.id === 7310));
   const ps = q('[data-s="bg.persist"]'); ps.value = '1'; ps.dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
   assert.ok(calls.filter((c) => c[0] === 'set').pop()[1].persist === true); assert.ok(vt().includes('LockStar'));

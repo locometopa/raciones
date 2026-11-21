@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.17.0';
+  var VERSION = '0.18.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -39,7 +39,7 @@
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
       kit: { sensorT: 0, sensorDays: '14', rapidT: 0, basalT: 0 },
-      bg: { on: '0', missed: '1', low: '0', persist: '0' },
+      bg: { on: '0', missed: '1', low: '0', persist: '0', predict: '1', xdrip: '0' },
       coach: { used: [], unlocked: [], tipDate: '', tipId: '', ach: [], reportShared: 0, newTip: 0 },
       meal: { items: [], slot: '' }
     };
@@ -435,10 +435,27 @@
   // ---------- vista: registro ----------
   var logSeg = 'diario', logDays = 7;
   function segHTML() { return '<div class="seg"><button class="' + (logSeg === 'diario' ? 'on' : '') + '" data-act="logseg" data-v="diario">Diario</button><button class="' + (logSeg === 'analisis' ? 'on' : '') + '" data-act="logseg" data-v="analisis">Análisis</button></div>'; }
+  function weeklyData() { return Coach.weekly({ hist: S.hist, log: S.log, now: Date.now(), lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70 }); }
+  function weeklyHTML() {
+    var r = weeklyData();
+    return '<section class="card"><h2>Tus últimos 7 días</h2><p style="margin:0 0 6px;font-size:15px">' + esc(Coach.weeklyText(r)) + '</p>' +
+      (r.best ? '<p class="fine">Tu mejor día: ' + new Date(r.best.day).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }) + ', con un ' + Math.round(r.best.tir) + ' % en rango.</p>' : '') +
+      (r.patterns.length ? '<div class="lab">Lo que se repite</div>' + r.patterns.map(function (q) { return '<div class="tipi">' + esc(q.x) + '</div>'; }).join('') : '<p class="fine">Con más días de datos te señalaré lo que se repite: qué comida te sube más, a qué hora sueles bajar…</p>') +
+      '<p class="fine">Cada domingo a las 20:00 te aviso para que lo mires.</p></section>';
+  }
+  /* Aviso de los domingos a las 20:00. */
+  async function scheduleWeekly() {
+    var n = notifPlugin(); if (!n) return;
+    try {
+      await n.cancel({ notifications: [{ id: 7600 }] });
+      var perm = await n.checkPermissions(); if (perm.display !== 'granted') return;
+      await n.schedule({ notifications: [{ id: 7600, title: 'Tu semana con iocrino', body: 'Tu resumen semanal está listo: tiempo en rango, bajadas y lo que se repite.', schedule: { on: { weekday: 1, hour: 20, minute: 0 }, allowWhileIdle: true }, extra: { kind: 'weekly' }, smallIcon: 'ic_stat_iocrino' }] });
+    } catch (e) { /* sin aviso */ }
+  }
   function vAnalysis() {
     var h = segHTML();
     h += '<button class="pri big" data-act="report">Informe para el endocrino</button>';
-    h += advisorHTML() + learnHTML() + moodStatsHTML();
+    h += weeklyHTML() + advisorHTML() + learnHTML() + moodStatsHTML();
     if (S.log.length) h += '<div class="row"><button data-act="csv">Copiar registro (CSV)</button><button data-act="repcsv">Compartir CSV</button></div>';
     view.innerHTML = h;
   }
@@ -767,6 +784,7 @@
       await n.registerActionTypes({ types: [{ id: 'BASAL', actions: [{ id: 'apuntar', title: 'Apuntar' }] }] });
       n.addListener('localNotificationActionPerformed', function (ev) {
         var x = ev && ev.notification && ev.notification.extra;
+        if (x && x.kind === 'weekly') { tab = 'registro'; logSeg = 'analisis'; render(); return; }
         if (x && x.kind !== 'basal') { tab = 'ahora'; render(); return; }
         if (!x || x.kind !== 'basal') return;
         if (ev.actionId === 'apuntar') quickBasal(true);
@@ -1043,9 +1061,15 @@
   var NB = null;
   function nativeBg() { if (!native || !window.Capacitor || !Capacitor.registerPlugin) return null; if (!NB) { try { NB = Capacitor.registerPlugin('Iocrino'); } catch (e) { NB = null; } } return NB; }
   function lastRapidT() { var l = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0]; return l ? l.t : 0; }
+  /* Minuto del día de tus comidas habituales por franja (mediana de los últimos 30 días, con 3 o más). */
+  function mealTimes() {
+    var by = {}, cut = Date.now() - 30 * 864e5;
+    S.log.forEach(function (e) { if ((!e.ins || e.ins === 'rapida') && e.carbs > 0 && e.t >= cut) { var d = new Date(e.t); (by[e.slot] = by[e.slot] || []).push(d.getHours() * 60 + d.getMinutes()); } });
+    return Object.keys(by).filter(function (k) { return by[k].length >= 3; }).map(function (k) { var a = by[k].sort(function (x, y) { return x - y; }); return a[Math.floor(a.length / 2)]; });
+  }
   async function nativeSync() {
     var nb = nativeBg(); if (!nb) return;
-    var cfg = { on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
+    var cfg = { mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
     var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
@@ -1076,10 +1100,12 @@
     try { await nb.runNow(); toast('Lectura en segundo plano lanzada. El widget se actualizará en unos segundos.'); } catch (e) { msgDlg('Segundo plano', 'Esta instalación no tiene la parte nativa: ' + (e && e.message || e)); }
   }
   function bgSettingsHTML() {
-    return '<section class="card"><h2>Con la app cerrada</h2><p class="mut">Si lo activas, el móvil lee el Libre cada 15 minutos aproximadamente aunque no abras iocrino. Sirve para el <b>widget</b> de la pantalla de inicio y para los avisos de abajo. Android puede retrasarlo un poco con el ahorro de batería.</p>' +
+    return '<section class="card"><h2>Con la app cerrada</h2><p class="mut">Los avisos de bajada en camino van mejor con la <b>glucosa fija</b> activada, porque así se lee el Libre cada minuto. Si solo activas la lectura con la app cerrada, el móvil lee cada 15 minutos aproximadamente aunque no abras iocrino. Sirve para el <b>widget</b> de la pantalla de inicio y para los avisos de abajo. Android puede retrasarlo un poco con el ahorro de batería.</p>' +
       sel('Leer el Libre con la app cerrada', 'bg.on', [['0', 'No'], ['1', 'Sí']]) +
-      sel('Avisar si parece que se te olvidó la rápida', 'bg.missed', [['1', 'Sí (sube mucho y no hay dosis apuntada)'], ['0', 'No']]) +
+      sel('Avisar de una bajada antes de que llegue', 'bg.predict', [['1', 'Sí (unos 20 min antes, según cómo bajas)'], ['0', 'No']]) +
+      sel('Avisar si parece que se te olvidó comer o pincharte', 'bg.missed', [['1', 'Sí (sube y no hay comida ni dosis apuntada)'], ['0', 'No']]) +
       sel('Avisar si bajas de tu límite de hipo', 'bg.low', [['0', 'No (ya avisa la app del Libre)'], ['1', 'Sí']]) +
+      sel('Enviar la glucosa a xDrip+ (para relojes Amazfit y Mi Band)', 'bg.xdrip', [['0', 'No'], ['1', 'Sí']]) +
       sel('Glucosa fija en las notificaciones', 'bg.persist', [['0', 'No'], ['1', 'Sí: en la pantalla de bloqueo y con el número arriba']]) +
       (libreOn() ? '' : '<p class="fine">Necesita el Libre conectado (correo y contraseña arriba).</p>') +
       (native ? '<div class="row" style="margin-top:10px"><button data-act="bgtest">Probar ahora</button></div>' : '') +
@@ -1198,7 +1224,7 @@
     if (!first || !quiet) { var a = got[got.length - 1]; setTimeout(function () { toast('🏅 Logro: ' + a.t); }, 400); if (!quiet) unlockTip(''); }
   }
   function ateRecently() { return S.log.some(function (e) { return e.carbs > 0 && Date.now() - e.t < 2 * 3600e3; }); }
-  function coachMsg(x) { return Coach.message({ g: x.g.v, trend: +S.now.trend || 0, old: x.old, stats: coachStats(), ateRecently: ateRecently(), now: Date.now() }); }
+  function coachMsg(x) { return Coach.message({ lowSoon: S.now.src === 'libre' && !x.old ? Coach.lowSoon(S.hist, Date.now(), num(S.cfg.hypo) || 70) : null, g: x.g.v, trend: +S.now.trend || 0, old: x.old, stats: coachStats(), ateRecently: ateRecently(), now: Date.now() }); }
   function coachHTML(x) {
     var m = coachMsg(x);
     return '<div class="coach ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>';
@@ -1215,6 +1241,13 @@
     '<li>Si quieres, activa en GlucoDataHandler las alarmas de bajada y subida: vibran en la muñeca.</li></ol>' +
     '<p>Funciona en los Galaxy Watch con Wear OS (Watch4 y posteriores). Los modelos antiguos con Tizen (Watch3, Active2 y anteriores) no son compatibles.</p>' +
     '<p>Además, los avisos de iocrino (la lenta, «vuelve a mirar en 15 minutos») ya te llegan al reloj solos si tienes activadas las notificaciones del móvil en la app Galaxy Wearable.</p></details>';
+  WATCH += '<details class="how"><summary>Ver la glucosa en una Amazfit Bip (o Mi Band)</summary><p>Esos relojes no dejan que otras apps les manden datos en directo, pero <b>xDrip+</b> (gratis) sí sabe ponerles una esfera con la glucosa. iocrino le pasa cada lectura y xDrip+ se encarga del reloj.</p><ol>' +
+    '<li>En iocrino: Ajustes → Con la app cerrada → «Enviar la glucosa a xDrip+: Sí» y activa la <b>glucosa fija</b> (para que lea cada minuto).</li>' +
+    '<li>Instala <b>xDrip+</b> desde su web oficial (no está en Google Play).</li>' +
+    '<li>En xDrip+: Ajustes → Fuente de datos (Hardware Data Source) → <b>Libre2 (patched app)</b>. En pocos minutos deberían entrar tus lecturas.</li>' +
+    '<li>En xDrip+: Ajustes → Funciones de reloj (Smart Watch Features) → <b>MiBand</b>: actívalo y pon la dirección Bluetooth (MAC) de tu Bip, que sale en la app Zepp o en Ajustes del reloj.</li>' +
+    '<li>xDrip+ instala en la Bip una esfera con la glucosa y la flecha, y la va actualizando.</li></ol>' +
+    '<p>Según el modelo y la versión, xDrip+ puede pedir una clave de autenticación del reloj; en su ayuda explican cómo sacarla. Esta parte no la he podido probar con tu reloj.</p></details>';
   function vLearn() {
     var x = gView(), st = coachStats(), m = coachMsg(x), h = '';
     S.coach.newTip = 0; save();
@@ -1466,6 +1499,7 @@
   render();
   nativePull().then(function () { nativeSync(); if (tab === 'ahora' && !dlg.open) render(); });
   scheduleKit();
+  scheduleWeekly();
   if (!S.cfg.setup && !configured()) { wz = 0; renderWz(); }
   initNotifications();
   autoBackup();

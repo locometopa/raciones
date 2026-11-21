@@ -30,6 +30,12 @@ public class IocrinoPlugin extends Plugin {
             // La sesión de la app es más reciente que la nuestra: la usamos
             JSONObject s = cfg.optJSONObject("session");
             if (s != null && s.optString("token", "").length() > 0) e.putString("session", s.toString());
+            if (cfg.optLong("sensorStart", 0) > 0) e.putLong("sensorStart", cfg.optLong("sensorStart"));
+            if (cfg.optBoolean("xdrip", false) && last != null && last.length() > 2) {
+                JSONObject l = new JSONObject(last);
+                e.apply();
+                XDrip.send(c, l.optInt("v"), l.optLong("t"));
+            }
         } catch (Exception ignored) { }
         if (last != null && last.length() > 0) e.putString("last", last);
         // Lo que la app ya tiene de las últimas horas, para la gráfica del widget grande
