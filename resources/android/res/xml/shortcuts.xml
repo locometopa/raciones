@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="comida" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_comida">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="es.locometopa.raciones" android:targetClass="es.locometopa.raciones.MainActivity">
+            <extra android:name="accion" android:value="comida" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="lenta" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_lenta">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="es.locometopa.raciones" android:targetClass="es.locometopa.raciones.MainActivity">
+            <extra android:name="accion" android:value="lenta" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="bajo" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_bajo">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="es.locometopa.raciones" android:targetClass="es.locometopa.raciones.MainActivity">
+            <extra android:name="accion" android:value="bajo" />
+        </intent>
+    </shortcut>
+</shortcuts>
