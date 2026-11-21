@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -13,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -52,3 +55,20 @@ jobs:
         with:
           name: raciones-apk
           path: raciones.apk
+
+      # La APK queda descargable sin iniciar sesión en:
+      # https://github.com/<usuario>/<repo>/raw/apk/raciones.apk
+      - name: Publicar la APK en la rama apk
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED: ${{ secrets.KEYSTORE_B64 != '' }}
+        run: |
+          mkdir pub && cp raciones.apk pub/ && cd pub
+          V=$(node -p "require('../package.json').version")
+          if [ "$SIGNED" = "true" ]; then F="firmada"; else F="de pruebas (sin firma propia)"; fi
+          echo "Raciones $V - APK $F - commit $GITHUB_SHA" > version.txt
+          git init -q -b apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add . && git commit -q -m "Raciones $V ($F)"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}" apk

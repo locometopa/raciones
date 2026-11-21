@@ -21,7 +21,7 @@ Abre `www/index.html` en el navegador (todo menos el Libre). Pruebas: `npm insta
 
 ## Compilar la APK
 
-- **GitHub Actions** (`.github/workflows/apk.yml`): en cada push a `main` compila y deja la APK como artefacto `raciones-apk`.
+- **GitHub Actions** (`.github/workflows/apk.yml`): en cada push a `main` compila y publica la APK en la rama `apk` (descarga directa: https://github.com/locometopa/raciones/raw/apk/raciones.apk).
   Con los secretos `KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` y `KEY_PASSWORD` sale firmada con clave propia;
   sin ellos sale una APK de pruebas que no se puede actualizar encima de otra (habría que desinstalar y se perderían los datos).
 - **En local** (con Android Studio / SDK y JDK 21): `npm install`, `npm run android`, `cd android`, `gradlew assembleDebug`.
