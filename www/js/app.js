@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.12.0';
+  var VERSION = '0.13.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -16,6 +16,9 @@
     spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
     run: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="4.5" r="2"/><path d="M7 21l3-6 3 2v5M10 15l1-6 4 3 3 1M11 9l-3 1-2 3"/></svg>',
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9 9H6v-5zM4 20h4"/></svg>',
+    smile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1.8 2 5.2 2 7 0M9 9.5h.01M15 9.5h.01"/></svg>',
+    wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7"/></svg>',
+    share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
   };
   var native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
@@ -155,14 +158,14 @@
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
     h += kitDueHTML();
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
-    h += coachHTML(x);
+    h += coachHTML(x) + moodCardHTML() + supportHTML();
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
     if (S.now.src === 'manual' && x.g.v !== null && S.now.t) dots.push({ t: S.now.t, v: x.g.v });
     h += '<section class="card chartc">' + Chart.svg({
       now: now, hours: 12, points: S.hist.filter(function (p) { return p[0] > now - 13 * 3600e3; }).map(function (p) { return { t: p[0], v: p[1] }; }).concat(S.hist.length ? [] : S.libre.graph), dots: S.hist.length || S.libre.graph.length ? [] : dots,
-      marks: S.log.filter(function (e) { return e.ins !== 'hipo' && e.ins !== 'ejercicio'; }).map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
+      marks: S.log.filter(function (e) { return e.ins !== 'hipo' && e.ins !== 'ejercicio' && e.ins !== 'animo'; }).map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
       low: num(S.cfg.rangeLow) || 70, high: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250, cls: x.cls
     }) + '</section>';
     h += '<button class="pri big" data-act="goto" data-v="comida">' + (S.meal.items.length ? 'Seguir con la comida (' + S.meal.items.length + ')' : 'Calcular comida') + '</button>';
@@ -430,7 +433,7 @@
   function vAnalysis() {
     var h = segHTML();
     h += '<button class="pri big" data-act="report">Informe para el endocrino</button>';
-    h += advisorHTML() + learnHTML();
+    h += advisorHTML() + learnHTML() + moodStatsHTML();
     if (S.log.length) h += '<div class="row"><button data-act="csv">Copiar registro (CSV)</button><button data-act="repcsv">Compartir CSV</button></div>';
     view.innerHTML = h;
   }
@@ -443,6 +446,10 @@
     S.log.filter(function (e) { return e.t >= cutDay; }).sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
       var d = new Date(e.t), day = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       if (day !== lastDay) { h += '<div class="day">' + esc(day) + '</div>'; lastDay = day; }
+      if (e.ins === 'animo') {
+        h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · ' + Coach.moodFace(e.mood) + ' Ánimo</b><small>' + esc(Coach.MOODS[e.mood - 1][2]) + ((e.tags || []).length ? ' · ' + esc(e.tags.join(', ')) : '') + (e.glucose != null ? ' · ' + fmt(e.glucose, 0) + ' mg/dL' : '') + '</small></div><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
+        return;
+      }
       if (e.ins === 'ejercicio') {
         h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · Ejercicio</b><small>' + esc(e.what) + ' · ' + e.min + ' min · ' + esc(e.level) + '</small></div><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
         return;
@@ -483,7 +490,7 @@
     var rows = ['fecha;hora;tipo;franja;hidratos_g;glucosa_mgdl;tendencia;sugerido_U;puesto_U;glucosa_3h;alimentos'];
     S.log.slice().sort(function (x, y) { return x.t - y.t; }).forEach(function (e) {
       var d = new Date(e.t);
-      rows.push([d.toLocaleDateString('es-ES'), hm(e.t), e.ins === 'basal' ? 'lenta' : e.ins === 'hipo' ? 'bajada' : e.ins === 'ejercicio' ? 'ejercicio' : 'rapida', e.slot || '', fmt(e.carbs || 0, 1), e.glucose != null ? e.glucose : '', TREND[e.trend] ? TREND[e.trend][1] : '', e.sug != null ? fmt(e.sug, 2) : '', fmt(e.u || 0, 2), e.post && !e.post.none ? e.post.g3 : '', '"' + String(e.items || e.name || '').replace(/"/g, '""') + '"'].join(';'));
+      rows.push([d.toLocaleDateString('es-ES'), hm(e.t), e.ins === 'basal' ? 'lenta' : e.ins === 'hipo' ? 'bajada' : e.ins === 'ejercicio' ? 'ejercicio' : e.ins === 'animo' ? 'animo' : 'rapida', e.slot || '', fmt(e.carbs || 0, 1), e.glucose != null ? e.glucose : '', TREND[e.trend] ? TREND[e.trend][1] : '', e.sug != null ? fmt(e.sug, 2) : '', fmt(e.u || 0, 2), e.post && !e.post.none ? e.post.g3 : '', '"' + String(e.items || e.name || '').replace(/"/g, '""') + '"'].join(';'));
     });
     return rows.join('\n');
   }
@@ -1073,6 +1080,70 @@
       '<details class="how"><summary>Si no lee con la app cerrada</summary><p>En Ajustes de Android → Aplicaciones → iocrino → Batería, elige <b>Sin restricciones</b>. En Samsung, quítala también de «Aplicaciones en suspensión».</p></details></section>';
   }
 
+  // ---------- ánimo ----------
+  var moodSel = 0, moodTags = [], breathTimer = null;
+  var MOOD_SHARE = 'Tengo diabetes tipo 1. Cuando el azúcar me baja o me sube puedo estar irritable, triste, nervioso o muy cansado sin un motivo claro, y no es por ti.\n\nSi me notas raro, pregúntame con cariño: «¿miramos la glucosa?». Si estoy bajo, lo primero es tomar azúcar (zumo, azúcar o pastillas de glucosa); si no puedo tomar nada, llama al 112.\n\nGracias por estar ahí.';
+  function moodToday() { var d0 = new Date(); d0.setHours(0, 0, 0, 0); return S.log.some(function (e) { return e.ins === 'animo' && e.t >= d0.getTime(); }); }
+  function moodCardHTML() {
+    if (moodToday() || S.coach.moodSkip === dayKey() || new Date().getHours() < 10) return '';
+    return '<div class="moodc"><div class="mq">¿Cómo te sientes hoy?<button class="x" data-act="moodlater" aria-label="Hoy no">✕</button></div><div class="faces">' +
+      Coach.MOODS.map(function (m) { return '<button class="face" data-act="mood" data-v="' + m[0] + '" aria-label="' + m[2] + '">' + m[1] + '</button>'; }).join('') + '</div></div>';
+  }
+  function dlgMood() {
+    openDlg('<h3>¿Cómo te sientes?</h3><div class="faces" id="mf">' + Coach.MOODS.map(function (m) { return '<button class="face' + (m[0] === moodSel ? ' on' : '') + '" data-act="moodpick" data-v="' + m[0] + '"><span>' + m[1] + '</span><small>' + m[2] + '</small></button>'; }).join('') + '</div>' +
+      '<label>¿Algo más? (opcional)</label><div class="chips">' + Coach.FEEL.map(function (f) { return '<button class="chip" data-act="moodtag" data-v="' + f + '">' + f + '</button>'; }).join('') + '</div>' +
+      '<p class="fine">Se guarda con tu glucosa de ahora, solo en este móvil.</p><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="moodsave">Guardar</button></div>');
+  }
+  function saveMood() {
+    if (!moodSel) { toast('Elige una cara'); return; }
+    var x = gView(), g = x.g.v !== null && !x.old ? x.g.v : null;
+    S.log.push({ t: Date.now(), ins: 'animo', carbs: 0, mood: moodSel, tags: moodTags.slice(), glucose: g });
+    save();
+    var r = Coach.moodReply({ mood: moodSel, g: g, lo: num(S.cfg.hypo) || 70, hi: num(S.cfg.rangeHigh) || 180, alto: num(S.cfg.alto) || 250, tags: moodTags });
+    var stressy = moodSel <= 3 && (moodTags.indexOf('Estresado') >= 0 || moodTags.indexOf('Nervioso') >= 0 || moodSel <= 2) && !(g != null && g < (num(S.cfg.hypo) || 70));
+    var low = g != null && g < (num(S.cfg.hypo) || 70);
+    render();
+    openDlg('<h3>' + Coach.moodFace(moodSel) + ' Apuntado</h3><div class="coach ' + r.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[r.tone]) + '</span><span>' + esc(r.text) + '</span></div><div class="acts">' +
+      (low ? '<button class="pri" data-act="hipo">Estoy bajo</button>' : stressy ? '<button data-act="breathe">Respirar 1 minuto</button>' : '') + '<button class="' + (low ? '' : 'pri') + '" data-act="close">Vale</button></div>');
+    checkAch(false);
+  }
+  function moodStatsInner() {
+    var m = Coach.moodStats(S.log, num(S.cfg.rangeLow) || 70, num(S.cfg.rangeHigh) || 180, Date.now(), 30);
+    if (m.n < 5) return '<p class="fine">' + (m.n ? 'Llevas ' + m.n + ' de 5 notas de ánimo para ver tu relación con la glucosa.' : 'Con 5 notas de ánimo verás si tu humor va de la mano de la glucosa.') + '</p>';
+    var row = function (lab, b, cls) { return b.n ? '<div class="kv"><span>' + lab + ' <small class="mut">(' + b.n + ')</small></span><b class="' + cls + '">' + Coach.moodFace(Math.round(b.avg)) + ' ' + fmt(b.avg, 1) + '</b></div>' : ''; };
+    var txt = '';
+    if (m.rango.n >= 2 && m.alto.n >= 2 && m.rango.avg - m.alto.avg >= 0.7) txt = 'Cuando estás alto te sueles sentir peor que en rango. Es el azúcar, no tú.';
+    else if (m.rango.n >= 2 && m.bajo.n >= 1 && m.rango.avg - m.bajo.avg >= 0.7) txt = 'En las bajadas tu ánimo cae. Tratarlas pronto también te ayuda a sentirte mejor.';
+    else if (m.rango.n >= 3) txt = 'Tu ánimo no parece depender mucho de la glucosa: también cuentan el sueño, el trabajo y la gente.';
+    return '<div class="lab">Ánimo medio (1 a 5) según tu glucosa · 30 días</div>' + row('Bajo', m.bajo, 'lo') + row('En rango', m.rango, 'in') + row('Alto', m.alto, 'hi') +
+      (txt ? '<p style="font-size:14px;margin:8px 0 0">' + txt + '</p>' : '') + (m.tags.length ? '<p class="fine">Lo que más apuntas: ' + esc(m.tags.slice(0, 3).map(function (t) { return t[0].toLowerCase(); }).join(', ')) + '.</p>' : '');
+  }
+  function moodStatsHTML() { return '<section class="card"><h2>Ánimo y glucosa</h2>' + moodStatsInner() + '<div class="row"><button data-act="mood">Apuntar cómo me siento</button></div></section>'; }
+  /* Si llevas varios días sintiéndote mal, un mensaje con apoyo (como mucho cada 3 días en Ahora). */
+  function supportHTML(always) {
+    if (!Coach.lowStreak(S.log, Date.now())) return '';
+    if (!always && S.coach.supportSeen && Date.now() - S.coach.supportSeen < 3 * 864e5) return '';
+    return '<section class="card support"><h2>Llevas unos días regular</h2><p>Cansarse de la diabetes es muy común: le pasa a muchísima gente en algún momento y no es falta de voluntad. No tienes que poder con todo tú solo.</p><ul>' +
+      '<li>Cuéntaselo a tu equipo de diabetes o a tu médico de cabecera: pueden ayudarte y derivarte a apoyo psicológico.</li>' +
+      '<li>Habla con alguien de confianza, o con otras personas con diabetes (las asociaciones de tu zona tienen grupos).</li>' +
+      '<li>Afloja el listón unos días: céntrate en lo básico (la lenta, la rápida con las comidas) y deja lo demás.</li></ul>' +
+      '<p class="fine">Si alguna vez lo pasas muy mal o piensas en hacerte daño, llama al <b>024</b> (gratis y a cualquier hora). En una urgencia, el 112.</p>' +
+      (always ? '' : '<div class="row"><button data-act="supportok">Gracias</button></div>') + '</section>';
+  }
+  function dlgBreathe() {
+    clearInterval(breathTimer);
+    openDlg('<h3>Respira conmigo</h3><div class="breath"><div class="bcirc"></div><div class="btxt" id="btxt">Coge aire…</div></div><p class="mut" style="text-align:center" id="bleft">60 s</p><div class="acts"><button class="pri" data-act="close">Terminar</button></div>');
+    var t0 = Date.now();
+    breathTimer = setInterval(function () {
+      var el = $('#btxt'); if (!el || !dlg.open) { clearInterval(breathTimer); return; }
+      var s2 = (Date.now() - t0) / 1000, left = Math.max(0, 60 - Math.floor(s2));
+      el.textContent = left <= 0 ? '¡Muy bien!' : (Math.floor(s2 / 4) % 2 ? 'Suelta despacio…' : 'Coge aire…');
+      $('#bleft').textContent = left > 0 ? left + ' s' : 'Hecho. ¿Mejor?';
+      if (left <= 0) clearInterval(breathTimer);
+    }, 250);
+  }
+  function extraLeft() { return S.coach.extraDate === dayKey() ? Math.max(0, 3 - (S.coach.extraN || 0)) : 3; }
+
   // ---------- ánimos, trucos y logros ----------
   function dayKey(t) { var d = new Date(t || Date.now()); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
   function histPairs() { return S.hist; }
@@ -1089,7 +1160,8 @@
     var now = Date.now(), lo = num(S.cfg.hypo) || 70, hi = num(S.cfg.rangeHigh) || 180;
     var recentLow = S.log.some(function (e) { return e.ins === 'hipo' && now - e.t < 7 * 864e5; }) || S.hist.some(function (p) { return now - p[0] < 3 * 864e5 && p[1] < lo; });
     var highAfter = S.log.filter(function (e) { return e.post && !e.post.none && now - e.t < 14 * 864e5 && e.post.g2 > hi; }).length >= 2;
-    return { rapid: S.cfg.rapid, basal: S.cfg.basal, recentLow: recentLow, highAfterMeals: highAfter, meals: mealsCount(), plates: S.plates.length };
+    var lm = S.log.filter(function (e) { return e.ins === 'animo' && now - e.t < 2 * 864e5; }).sort(function (a, b) { return b.t - a.t; })[0];
+    return { lowMood: !!(lm && lm.mood <= 2), rapid: S.cfg.rapid, basal: S.cfg.basal, recentLow: recentLow, highAfterMeals: highAfter, meals: mealsCount(), plates: S.plates.length };
   }
   function unlockTip(why) {
     var t = Coach.nextTip(S.coach.unlocked, tipCtx()); if (!t) return null;
@@ -1104,7 +1176,7 @@
     if (S.coach.tipDate !== k) { S.coach.tipDate = k; unlockTip(''); }
     save(); checkAch(true);
   }
-  function achState() { return { meals: mealsCount(), plates: S.plates.length, daysUsed: S.coach.used.length, basalStreak: basalStreak(), stats: coachStats(), reportShared: S.coach.reportShared }; }
+  function achState() { return { moods: S.log.filter(function (e) { return e.ins === 'animo'; }).length, meals: mealsCount(), plates: S.plates.length, daysUsed: S.coach.used.length, basalStreak: basalStreak(), stats: coachStats(), reportShared: S.coach.reportShared }; }
   /* Avisa de los logros nuevos (la primera vez solo los marca, sin felicitar por lo que ya había). */
   function checkAch(quiet) {
     var got = Coach.achievements(achState()).filter(function (a) { return a.ok && S.coach.ach.indexOf(a.id) < 0; });
@@ -1140,7 +1212,10 @@
       (st.week.some(function (d) { return d.tir != null; }) ? '<div class="lab">Últimos 7 días · % en rango</div>' + Coach.weekBars(st.week) : '') +
       (st.streak ? '<p class="fine">Racha: ' + st.streak + (st.streak === 1 ? ' día' : ' días') + ' seguidos por encima del 70 %.</p>' : '') + '</section>';
     var t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
-    if (t) h += '<section class="card"><h2>' + esc(t.k) + ' del día</h2><p style="margin:0;font-size:16px;line-height:1.5">' + esc(t.x) + '</p><p class="fine">Cada día que abres iocrino se desbloquea uno nuevo. Llevas ' + S.coach.unlocked.length + ' de ' + Coach.TIPS.length + '.</p></section>';
+    if (t) h += '<section class="card"><h2>' + esc(t.k) + ' del día</h2><p style="margin:0;font-size:16px;line-height:1.5">' + esc(t.x) + '</p><p class="fine">Cada día que abres iocrino se desbloquea uno nuevo. Llevas ' + S.coach.unlocked.length + ' de ' + Coach.TIPS.length + '.</p>' + (extraLeft() > 0 && S.coach.unlocked.length < Coach.TIPS.length ? '<button data-act="tipmore">Descubrir otro (' + extraLeft() + ' hoy)</button>' : '') + '</section>';
+    h += '<section class="card"><h2>Tu ánimo</h2><p class="mut" style="margin-top:0">Las subidas y bajadas de azúcar también mueven el humor: una bajada puede traer tristeza o nervios de golpe, y estar alto, cansancio e irritabilidad. Apuntarlo ayuda a separar lo que es azúcar de lo que no.</p>' +
+      '<div class="ways3"><button data-act="mood">' + ICON.smile + 'Cómo me siento</button><button data-act="breathe">' + ICON.wind + 'Respirar 1 min</button><button data-act="moodshare">' + ICON.share + 'Explicárselo a los míos</button></div>' + moodStatsInner() + '</section>';
+    h += supportHTML(true);
     h += '<button class="big" data-act="guide">Guía fácil: cómo funciona todo esto</button>';
     h += '<section class="card"><h2>Infografías</h2><div class="igl">' + Coach.infographics().map(function (g) { return '<button data-act="ig" data-v="' + g.id + '">' + esc(g.t) + '</button>'; }).join('') + '</div></section>';
     var tips = S.coach.unlocked.map(Coach.tip).filter(Boolean).reverse();
@@ -1268,6 +1343,15 @@
       }
       case 'guide': dlgGuide(); break;
       case 'ig': dlgIg(b.dataset.v); break;
+      case 'tipmore': if (extraLeft() > 0) { S.coach.extraDate = dayKey(); S.coach.extraN = (S.coach.extraDate === dayKey() ? (S.coach.extraN || 0) : 0) + 1; unlockTip(''); S.coach.newTip = 0; save(); render(); } break;
+      case 'mood': moodSel = +b.dataset.v || 0; moodTags = []; dlgMood(); break;
+      case 'moodpick': moodSel = +b.dataset.v; Array.prototype.forEach.call(document.querySelectorAll('#mf .face'), function (c) { c.classList.toggle('on', c === b); }); break;
+      case 'moodtag': { var tg = b.dataset.v, ix = moodTags.indexOf(tg); if (ix < 0) moodTags.push(tg); else moodTags.splice(ix, 1); b.classList.toggle('on', ix < 0); break; }
+      case 'moodsave': saveMood(); break;
+      case 'moodlater': S.coach.moodSkip = dayKey(); save(); render(); break;
+      case 'breathe': dlgBreathe(); break;
+      case 'moodshare': shareText('Mi diabetes y mi humor', MOOD_SHARE); break;
+      case 'supportok': S.coach.supportSeen = Date.now(); save(); render(); break;
       case 'logseg': logSeg = b.dataset.v; render(); window.scrollTo(0, 0); break;
       case 'logmore': logDays += 7; render(); break;
       case 'fat': S.meal.fat = S.meal.fat === '1' ? '0' : '1'; save(); renderRes(); break;

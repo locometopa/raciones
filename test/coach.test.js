@@ -45,4 +45,20 @@ assert.deepStrictEqual(ok.sort(), ['comidas10', 'dia70', 'lenta7', 'primera', 'r
 assert.ok(C.infographics().length >= 5);
 C.infographics().forEach((i) => { const g = C.infographic(i.id); assert.ok(g.svg.startsWith('<svg') && g.svg.endsWith('</svg>'), i.id); });
 assert.ok(C.donut(82).includes('82 %')); assert.ok(C.weekBars(s.week).includes('<rect'));
+// Ánimo
+assert.strictEqual(C.moodReply({ mood: 2, g: 60 }).tone, 'bad');
+assert.ok(C.moodReply({ mood: 1, g: 290 }).text.includes('alto'));
+assert.ok(C.moodReply({ mood: 2, g: 120, tags: ['Estresado'] }).text.includes('respiración'));
+assert.strictEqual(C.moodReply({ mood: 5, g: 120 }).tone, 'ok');
+const ml = [];
+for (let i = 0; i < 4; i++) ml.push({ t: now - i * D, ins: 'animo', mood: 4, glucose: 120 });
+for (let i = 0; i < 3; i++) ml.push({ t: now - i * D - H, ins: 'animo', mood: 2, glucose: 240, tags: ['Cansado'] });
+const ms = C.moodStats(ml, 70, 180, now, 30);
+assert.strictEqual(ms.n, 7); assert.strictEqual(ms.rango.avg, 4); assert.strictEqual(ms.alto.avg, 2); assert.strictEqual(ms.tags[0][0], 'Cansado');
+assert.ok(!C.lowStreak(ml, now));
+const bad = []; for (let i = 0; i < 5; i++) bad.push({ t: now - i * D, ins: 'animo', mood: 1 });
+assert.ok(C.lowStreak(bad, now));
+// Muchos trucos, sin repetir ids, y los de ánimo salen primero si estás de bajón
+assert.ok(C.TIPS.length >= 90);
+assert.strictEqual(C.nextTip([], { lowMood: true }).k, 'Ánimo');
 console.log('coach: todas las pruebas pasan');

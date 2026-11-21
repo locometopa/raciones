@@ -16,7 +16,10 @@ def drop_poly(cx, cy, r, d, n=200):
         a = a1 + (a2 - a1) * i / n; pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
     return pts
 
-def logo(size, bg=None, scale=1.0, drop=TEAL, stem=WHITE, shape='square'):
+RING = (71, 144, 137, 255)
+
+def logo(size, bg=None, scale=1.0, disc=TEAL, ring=RING, drop=WHITE, shape='square', mono=False):
+    """Sensor redondo (el parche del Libre) con una gota dentro. mono: silueta blanca para los avisos."""
     S = 4; W = size * S
     im = Image.new('RGBA', (W, W), (0, 0, 0, 0)); dr = ImageDraw.Draw(im)
     if bg:
@@ -24,27 +27,32 @@ def logo(size, bg=None, scale=1.0, drop=TEAL, stem=WHITE, shape='square'):
         elif shape == 'rounded': dr.rounded_rectangle([0, 0, W - 1, W - 1], radius=int(W * 0.22), fill=bg)
         else: dr.rectangle([0, 0, W, W], fill=bg)
     k = W / 1024 * scale; c = W / 2
-    P = lambda x, y: (c + (x - 512) * k, c + (y - 480) * k)
-    dr.polygon([P(x, y) for x, y in drop_poly(512, 330, 112, 232)], fill=drop)   # el punto de la «i»: una gota
-    x0, y0 = P(440, 498); x1, y1 = P(584, 860)
-    dr.rounded_rectangle([x0, y0, x1, y1], radius=int(72 * k), fill=stem)        # el palo de la «i»
+    P = lambda x, y: (c + (x - 512) * k, c + (y - 512) * k)
+    R = lambda r: r * k
+    if mono:
+        dr.ellipse([c - R(470), c - R(470), c + R(470), c + R(470)], outline=WHITE, width=int(R(90)))
+        dr.polygon([P(x, y) for x, y in drop_poly(512, 590, 175, 345)], fill=WHITE)
+    else:
+        dr.ellipse([c - R(356), c - R(356), c + R(356), c + R(356)], fill=disc)                       # el sensor
+        dr.ellipse([c - R(280), c - R(280), c + R(280), c + R(280)], outline=ring, width=int(R(28)))  # su borde
+        dr.polygon([P(x, y) for x, y in drop_poly(512, 576, 140, 276)], fill=drop)                    # la gota
     return im.resize((size, size), Image.LANCZOS)
 
 if __name__ == '__main__':
     out = 'resources/android/res'
     for dn, f in {'mdpi': 1, 'hdpi': 1.5, 'xhdpi': 2, 'xxhdpi': 3, 'xxxhdpi': 4}.items():
         d = f'{out}/mipmap-{dn}'; os.makedirs(d, exist_ok=True)
-        logo(int(48 * f), BG, 0.80, shape='rounded').save(f'{d}/ic_launcher.png')
-        logo(int(48 * f), BG, 0.80, shape='circle').save(f'{d}/ic_launcher_round.png')
-        logo(int(108 * f), None, 0.56).save(f'{d}/ic_launcher_foreground.png')
+        logo(int(48 * f), BG, 1.0, shape='rounded').save(f'{d}/ic_launcher.png')
+        logo(int(48 * f), BG, 1.0, shape='circle').save(f'{d}/ic_launcher_round.png')
+        logo(int(108 * f), None, 0.86).save(f'{d}/ic_launcher_foreground.png')
         n = f'{out}/drawable-{dn}'; os.makedirs(n, exist_ok=True)
-        logo(int(24 * f), None, 1.1, drop=WHITE, stem=WHITE).save(f'{n}/ic_stat_iocrino.png')
-    for p in glob.glob('android/app/src/main/res/drawable*/splash.png'):
+        logo(int(24 * f), None, 1.0, mono=True).save(f'{n}/ic_stat_iocrino.png')
+    for p in glob.glob('android/app/src/main/res/drawable*/splash.png') or glob.glob('resources/android/res/drawable*/splash.png'):
         w, h = Image.open(p).size; rel = p.split('res/')[1]
         os.makedirs(f'{out}/' + os.path.dirname(rel), exist_ok=True)
-        im = Image.new('RGBA', (w, h), BG); m = int(min(w, h) * 0.34); L = logo(m, None, 1.0)
+        im = Image.new('RGBA', (w, h), BG); m = int(min(w, h) * 0.34); L = logo(m, None, 1.2)
         im.paste(L, ((w - m) // 2, (h - m) // 2), L); im.convert('RGB').save(f'{out}/{rel}')
     os.makedirs(f'{out}/values', exist_ok=True)
     open(f'{out}/values/ic_launcher_background.xml', 'w').write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#1F232B</color>\n</resources>\n')
-    logo(512, BG, 0.80, shape='rounded').save('resources/icono-512.png')
+    logo(512, BG, 1.0, shape='rounded').save('resources/icono-512.png')
     print('iconos generados')

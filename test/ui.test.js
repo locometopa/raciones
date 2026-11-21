@@ -440,6 +440,16 @@ async function v011() {
   w.__raciones.doAction('bajo'); assert.ok(q('#dlg').textContent.includes('Estoy bajo')); k(q('[data-act="close"]'));
   st.cfg.basalDose = '30'; w.__raciones.doAction('lenta'); assert.ok(q('#dlg').textContent.includes('Tresiba')); k(q('[data-act="yes"]'));
   assert.ok(st.log.some((e) => e.ins === 'basal'));
+  // Ánimo: apuntar con la glucosa, respuesta según el azúcar, y aparece en Aprende y en el registro
+  st.now = { v: '60', trend: 3, t: Date.now(), src: 'manual' };
+  w.__raciones.render(); k(q('[data-tab="aprende"]')); assert.ok(vt().includes('Tu ánimo'));
+  k(q('[data-act="mood"]')); k(q('#mf [data-v="2"]')); k(q('[data-act="moodtag"][data-v="Irritable"]')); k(q('[data-act="moodsave"]'));
+  const me = st.log.find((e) => e.ins === 'animo'); assert.ok(me && me.mood === 2 && me.glucose === 60 && me.tags[0] === 'Irritable');
+  assert.ok(q('#dlg').textContent.includes('primero trátala')); assert.ok(q('#dlg [data-act="hipo"]')); k(q('#dlg [data-act="close"]'));
+  k(q('[data-act="breathe"]')); assert.ok(q('.bcirc')); k(q('[data-act="close"]'));
+  for (let i = 1; i <= 5; i++) st.log.push({ t: t0 - i * D, ins: 'animo', carbs: 0, mood: 1, glucose: 130 });
+  w.__raciones.render(); assert.ok(vt().includes('024')); assert.ok(vt().includes('Ánimo medio'));
+  k(q('[data-act="tipmore"]')); assert.ok(st.coach.extraN === 1);
   // Registro: 7 días y «ver más»
   for (let d = 1; d <= 12; d++) st.log.push({ t: t0 - d * D, ins: 'basal', u: 30, carbs: 0, name: 'Tresiba' });
   k(q('[data-tab="registro"]')); assert.ok(q('[data-act="logmore"]')); const n1 = w.document.querySelectorAll('.day').length; k(q('[data-act="logmore"]'));
