@@ -43,6 +43,7 @@ jobs:
             -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/raciones.apk"
+          cp wear/build/outputs/apk/release/wear-release.apk "$GITHUB_WORKSPACE/iocrino-reloj.apk"
       - name: APK de pruebas (sin firma propia)
         if: ${{ env.KEYSTORE_B64 == '' }}
         env:
@@ -51,10 +52,13 @@ jobs:
           cd android && chmod +x gradlew
           ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/raciones.apk"
+          cp wear/build/outputs/apk/debug/wear-debug.apk "$GITHUB_WORKSPACE/iocrino-reloj.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: raciones-apk
-          path: raciones.apk
+          path: |
+            raciones.apk
+            iocrino-reloj.apk
 
       # La APK queda descargable sin iniciar sesión en:
       # https://github.com/<usuario>/<repo>/raw/apk/iocrino.apk (y raciones.apk, el nombre antiguo)
@@ -63,7 +67,7 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNED: ${{ secrets.KEYSTORE_B64 != '' }}
         run: |
-          mkdir pub && cp raciones.apk pub/ && cp raciones.apk pub/iocrino.apk && cd pub
+          mkdir pub && cp raciones.apk pub/ && cp raciones.apk pub/iocrino.apk && cp iocrino-reloj.apk pub/ && cd pub
           V=$(node -p "require('../package.json').version")
           if [ "$SIGNED" = "true" ]; then F="firmada"; else F="de pruebas (sin firma propia)"; fi
           AS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner

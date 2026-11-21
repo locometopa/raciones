@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.19.0';
+  var VERSION = '0.20.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -634,6 +634,11 @@
       '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (aiOn() ? '<div class="row"><button data-act="label">' + ICON.tag + ' Añadir desde la foto de una etiqueta</button></div>' : '') + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
+    h += '<section class="card"><h2>Aspecto y modo noche</h2>' +
+      sel('Tema', 'cfg.theme', [['dark', 'Oscuro'], ['light', 'Claro'], ['auto', 'Como el móvil']]) +
+      sel('Modo noche', 'cfg.night', [['1', 'Automático'], ['0', 'No']]) +
+      (S.cfg.night !== '0' ? '<div class="grid2"><div>' + field('Desde', 'cfg.nightFrom', 'type="time"') + '</div><div>' + field('Hasta', 'cfg.nightTo', 'type="time"') + '</div></div>' : '') +
+      '<p class="fine">De noche la pantalla se pone más oscura y suave, y los avisos de «¿Has comido?» y de dosis olvidada se callan. Los de bajada siguen sonando siempre.</p></section>';
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
@@ -1049,6 +1054,23 @@
     readLibre(true);
   }
 
+  // ---------- tema y modo noche ----------
+  function hm2min(s, d) { var m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : d; }
+  function nightWindow() { return [hm2min(S.cfg.nightFrom, 23 * 60), hm2min(S.cfg.nightTo, 7 * 60)]; }
+  function isNight(t) {
+    if (S.cfg.night === '0') return false;
+    var d = new Date(t || Date.now()), m = d.getHours() * 60 + d.getMinutes(), w = nightWindow();
+    return w[0] > w[1] ? (m >= w[0] || m < w[1]) : (m >= w[0] && m < w[1]);
+  }
+  function applyTheme() {
+    var th = S.cfg.theme || 'dark';
+    if (th === 'auto') th = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    var night = isNight(), root = document.documentElement;
+    root.classList.toggle('light', th === 'light' && !night);
+    root.classList.toggle('night', night);
+    var mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.setAttribute('content', night ? '#000000' : th === 'light' ? '#f4f6f9' : '#1f232b');
+  }
+
   // ---------- avisos sueltos ----------
   async function notifyAt(id, at, title, body, kind) {
     var n = notifPlugin(); if (!n) return;
@@ -1140,7 +1162,8 @@
   }
   async function nativeSync() {
     var nb = nativeBg(); if (!nb) return;
-    var cfg = { mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
+    var nw = nightWindow();
+    var cfg = { night: S.cfg.night !== '0', nightFrom: nw[0], nightTo: nw[1], mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
     var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
@@ -1193,7 +1216,7 @@
   var MOOD_SHARE = 'Tengo diabetes tipo 1. Cuando el azúcar me baja o me sube puedo estar irritable, triste, nervioso o muy cansado sin un motivo claro, y no es por ti.\n\nSi me notas raro, pregúntame con cariño: «¿miramos la glucosa?». Si estoy bajo, lo primero es tomar azúcar (zumo, azúcar o pastillas de glucosa); si no puedo tomar nada, llama al 112.\n\nGracias por estar ahí.';
   function moodToday() { var d0 = new Date(); d0.setHours(0, 0, 0, 0); return S.log.some(function (e) { return e.ins === 'animo' && e.t >= d0.getTime(); }); }
   function moodCardHTML() {
-    if (moodToday() || S.coach.moodSkip === dayKey() || new Date().getHours() < 10) return '';
+    if (moodToday() || S.coach.moodSkip === dayKey() || new Date().getHours() < 10 || isNight()) return '';
     return '<div class="moodc"><div class="mq">¿Cómo te sientes hoy?<button class="x" data-act="moodlater" aria-label="Hoy no">✕</button></div><div class="faces">' +
       Coach.MOODS.map(function (m) { return '<button class="face" data-act="mood" data-v="' + m[0] + '" aria-label="' + m[2] + '">' + m[1] + '</button>'; }).join('') + '</div></div>';
   }
@@ -1304,7 +1327,13 @@
     var t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
     return t ? '<button class="tipline" data-act="goto" data-v="aprende"><span class="tk">' + (S.coach.newTip ? 'Nuevo · ' : '') + esc(t.k) + ' del día</span><span class="tx">' + esc(t.x) + '</span></button>' : '';
   }
-  var WATCH = '<details class="how"><summary>Ver la glucosa en tu Galaxy Watch</summary><p>iocrino no puede pintar en la esfera del reloj, pero hay una app gratuita que lo hace muy bien leyendo de LibreLinkUp: <b>GlucoDataHandler</b>.</p><ol>' +
+  var WATCH_OWN = '<details class="how" open><summary>App de iocrino para el Galaxy Watch</summary><p>iocrino tiene su propia app para relojes con Wear OS (Galaxy Watch4 y posteriores): pone la glucosa y la flecha en la esfera y se actualiza con cada lectura del móvil. Funciona mejor con la <b>glucosa fija</b> activada.</p><p>Como no está en la tienda, se instala a mano una vez:</p><ol>' +
+    '<li>En el reloj: Ajustes → Información del reloj → Información de software → toca 5 veces «Versión de software». Aparecen las <b>Opciones de desarrollador</b>: activa «Depuración ADB» y «Depurar por Wi-Fi». Apunta la dirección IP que sale.</li>' +
+    '<li>En el móvil: descarga <b>iocrino-reloj.apk</b> desde github.com/locometopa/raciones/raw/apk/iocrino-reloj.apk.</li>' +
+    '<li>Instala en el móvil la app <b>Wear Installer 2</b> (Google Play), pon la IP del reloj, acepta el aviso en el reloj y elige el archivo iocrino-reloj.apk.</li>' +
+    '<li>En el reloj: mantén pulsada la esfera → Personalizar → toca un hueco de complicación → <b>Glucosa (iocrino)</b>.</li></ol>' +
+    '<p>Al acabar puedes desactivar la depuración del reloj. Las actualizaciones del reloj se instalan igual, encima.</p></details>';
+  var WATCH = '<details class="how"><summary>Otra opción para el Galaxy Watch: GlucoDataHandler</summary><p>Si prefieres no instalar nada a mano, hay una app gratuita en Google Play que también pone la glucosa en la esfera leyendo de LibreLinkUp: <b>GlucoDataHandler</b>.</p><ol>' +
     '<li>En el móvil, instala <b>GlucoDataHandler</b> desde Google Play.</li>' +
     '<li>Ábrela y en <b>Fuentes</b> activa <b>LibreLinkUp</b> con el mismo correo y contraseña que usas en iocrino.</li>' +
     '<li>En el reloj, abre Play Store, busca <b>GlucoDataHandler</b> e instálala (se empareja sola con la del móvil).</li>' +
@@ -1340,7 +1369,7 @@
     var ach = Coach.achievements(achState());
     h += '<section class="card"><h2>Logros · ' + ach.filter(function (a) { return a.ok; }).length + ' de ' + ach.length + '</h2><div class="achs">' +
       ach.map(function (a) { return '<div class="ach' + (a.ok ? ' ok' : '') + '"><span class="am">' + (a.ok ? '🏅' : '○') + '</span><b>' + esc(a.t) + '</b><small>' + esc(a.d) + '</small></div>'; }).join('') + '</div></section>';
-    h += '<section class="card"><h2>En tu reloj</h2>' + WATCH + '</section>';
+    h += '<section class="card"><h2>En tu reloj</h2>' + WATCH_OWN + WATCH + '</section>';
     h += '<p class="fine" style="text-align:center">Consejos generales para animarte. No sustituyen lo que te diga tu equipo de diabetes.</p>';
     view.innerHTML = h;
   }
@@ -1351,6 +1380,7 @@
 
   // ---------- render y eventos ----------
   function render() {
+    applyTheme();
     Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
     if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else if (tab === 'aprende') vLearn(); else vSettings();
     if (tab !== 'comida') renderSum();
@@ -1364,6 +1394,8 @@
       if (t.dataset.s.indexOf('libre.') === 0) S.libre.session = null;
       save();
       if (/^cfg\.(basal|basalDose|basalTime|basalRemind)$/.test(t.dataset.s)) scheduleBasal();
+      if (/^cfg\.(theme|night)/.test(t.dataset.s)) applyTheme();
+      if (/^cfg\.(night|nightFrom|nightTo)$/.test(t.dataset.s)) nativeSync();
       if (/^(bg\.|libre\.(email|password)|cfg\.(rangeLow|rangeHigh|hypo))/.test(t.dataset.s)) nativeSync();
       if (t.dataset.s === 'bg.persist' && S.bg.persist === '1') { var np = notifPlugin(); if (np) np.requestPermissions().catch(function () {}); if (!libreOn()) toast('Necesita el Libre conectado (correo y contraseña)'); }
       if (t.dataset.s === 'kit.sensorDays') scheduleKit();
@@ -1569,7 +1601,7 @@
   });
   dlg.addEventListener('close', function () { stopScan(); wzOpen = false; });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { coachDaily(); nativePull().then(nativeSync); autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); if (tab === 'ahora' && !dlg.open) render(); } });
-  setInterval(function () { if (document.hidden) return; autoLibre(); refreshGlucoseUI(); }, 30000);
+  setInterval(function () { if (document.hidden) return; applyTheme(); autoLibre(); refreshGlucoseUI(); }, 30000);
 
   coachDaily();
   render();

@@ -439,6 +439,10 @@ async function v011() {
   const sec = q('details.sec[data-sec="s1"]'); sec.open = true; sec.dispatchEvent(new w.Event('toggle')); w.__raciones.render(); assert.ok(q('details.sec[data-sec="s1"]').open);
   // Enviamos las últimas horas al widget
   assert.ok(calls.filter((c) => c[0] === 'set').length >= 2);
+  // Tema claro y modo noche
+  st.cfg.night = '0'; st.cfg.theme = 'light'; w.__raciones.render(); assert.ok(w.document.documentElement.classList.contains('light'));
+  st.cfg.night = '1'; st.cfg.nightFrom = '00:00'; st.cfg.nightTo = '23:59'; w.__raciones.render(); assert.ok(w.document.documentElement.classList.contains('night')); assert.ok(!w.document.documentElement.classList.contains('light'));
+  st.cfg.night = '0'; st.cfg.theme = 'dark'; w.__raciones.render(); assert.ok(!w.document.documentElement.classList.contains('night'));
   // Botones del widget y atajos del icono
   w.__raciones.doAction('comida'); assert.ok(q('[data-tab="comida"]').classList.contains('on'));
   w.__raciones.doAction('bajo'); assert.ok(q('#dlg').textContent.includes('Estoy bajo')); k(q('[data-act="close"]'));

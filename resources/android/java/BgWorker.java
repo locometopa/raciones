@@ -75,7 +75,7 @@ public class BgWorker extends Worker {
                 JSONArray pt = hist.getJSONArray(i);
                 if (pt.getLong(0) > now - 24 * H) { keep.put(pt); lastT = Math.max(lastT, pt.getLong(0)); }
             }
-            if (rd.t > lastT) { JSONArray pt = new JSONArray(); pt.put(rd.t); pt.put(rd.v); keep.put(pt); if (cfg.optBoolean("xdrip", false)) XDrip.send(c, rd.v, rd.t); }
+            if (rd.t > lastT) { JSONArray pt = new JSONArray(); pt.put(rd.t); pt.put(rd.v); keep.put(pt); if (cfg.optBoolean("xdrip", false)) XDrip.send(c, rd.v, rd.t); WearSync.send(c, rd.v, rd.trend, rd.t, cfg); }
             JSONObject last = new JSONObject(); last.put("v", rd.v); last.put("trend", rd.trend); last.put("t", rd.t);
             p.edit().putString("hist", keep.toString()).putString("last", last.toString()).putString("session", sess[0].toString()).putString("err", "").putLong("fetchT", now).apply();
             GlucoseWidget.refreshAll(c);
@@ -111,6 +111,13 @@ public class BgWorker extends Worker {
         return false;
     }
 
+    static boolean inNight(JSONObject cfg, long now) {
+        if (!cfg.optBoolean("night", false)) return false;
+        java.util.Calendar cal = java.util.Calendar.getInstance(); cal.setTimeInMillis(now);
+        int m = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE), a = cfg.optInt("nightFrom", 1380), b = cfg.optInt("nightTo", 420);
+        return a > b ? (m >= a || m < b) : (m >= a && m < b);
+    }
+
     static void alerts(Context c, SharedPreferences p, JSONObject cfg, JSONArray hist, LibreClient.Reading rd, long now) throws Exception {
         int hypo = cfg.optInt("hypo", 70);
         // Bajada (opcional; la app del Libre ya tiene sus alarmas). Como mucho, un aviso cada 30 min.
@@ -128,8 +135,8 @@ public class BgWorker extends Worker {
                 p.edit().putLong("predT", now).apply();
             }
         }
-        // Dosis o comida sin apuntar
-        if (!cfg.optBoolean("missed", true)) return;
+        // Dosis o comida sin apuntar (de noche, en silencio)
+        if (!cfg.optBoolean("missed", true) || inNight(cfg, now)) return;
         if (now - cfg.optLong("missedOff", 0) < 3 * H || now - cfg.optLong("lastRapid", 0) < 2 * H || now - p.getLong("missedT", 0) < 3 * H) return;
         int mn2 = rd.v, n2 = 0, mn45 = rd.v, n45 = 0;
         for (int i = 0; i < hist.length(); i++) {

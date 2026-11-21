@@ -37,6 +37,7 @@ public class IocrinoPlugin extends Plugin {
             JSONObject s = cfg.optJSONObject("session");
             if (s != null && s.optString("token", "").length() > 0) e.putString("session", s.toString());
             if (cfg.optLong("sensorStart", 0) > 0) e.putLong("sensorStart", cfg.optLong("sensorStart"));
+            if (last != null && last.length() > 2) { JSONObject lw = new JSONObject(last); WearSync.send(c, lw.optInt("v"), lw.optInt("trend"), lw.optLong("t"), cfg); }
             if (cfg.optBoolean("xdrip", false) && last != null && last.length() > 2) {
                 JSONObject l = new JSONObject(last);
                 e.apply();

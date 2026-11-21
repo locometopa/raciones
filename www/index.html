@@ -8,7 +8,11 @@
 <style>
 :root{--bg:#1f232b;--card:#2a2f38;--card2:#363c48;--ink:#f3f5f8;--mut:#a4adbb;--line:#3a414d;--acc:#5ccbbb;--acc-ink:#0b2421;
 --warn:#f2c069;--warn-bg:#3a2f14;--bad:#ffa0a6;--bad-bg:#47191e;--info-bg:#243538;
---in:#34552f;--in-b:#7acc6c;--hi:#5a4a1b;--hi-b:#f0b429;--vhi:#5e371a;--vhi-b:#f5873b;--lo:#5c2328;--lo-b:#ff5a5a;--old:#363c48;--old-b:#6b7280;color-scheme:dark}
+--in:#34552f;--in-b:#7acc6c;--hi:#5a4a1b;--hi-b:#f0b429;--vhi:#5e371a;--vhi-b:#f5873b;--lo:#5c2328;--lo-b:#ff5a5a;--old:#363c48;--old-b:#6b7280;--gline:#fff;color-scheme:dark}
+html.light{--bg:#f4f6f9;--card:#ffffff;--card2:#e8ecf1;--ink:#1b1f27;--mut:#5d6675;--line:#d7dbe2;--acc:#1f9e8f;--acc-ink:#ffffff;--warn:#8a5a00;--warn-bg:#fff4d6;--bad:#b3261e;--bad-bg:#fde7e8;--info-bg:#e3f4f2;--in:#3f9a4c;--in-b:#2e8a3c;--hi:#c98e00;--hi-b:#b07d00;--vhi:#d9661c;--vhi-b:#c4561a;--lo:#d23b3f;--lo-b:#c62828;--old:#8a93a3;--old-b:#6b7280;--gline:#1b1f27;color-scheme:light}
+html.night{--bg:#000;--card:#0f1114;--card2:#1a1d22;--ink:#c9ced6;--mut:#7d8592;--line:#23272e;--acc:#3f9a8f;--gline:#c9ced6}
+html.night body{font-size:105%}
+html.night header .logo{opacity:.7}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
 body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
@@ -69,9 +73,9 @@ button:disabled{opacity:.5}
 .gchart .tickd{fill:var(--mut)}
 .gchart .hypo{stroke:#ff5a5a;stroke-width:1.6;stroke-dasharray:6 5}
 .gchart .alto{stroke:#f5a623;stroke-width:1.6;stroke-dasharray:6 5}
-.gchart .gline{fill:none;stroke:#fff;stroke-width:2.8;stroke-linejoin:round;stroke-linecap:round}
-.gchart .gpt{fill:#fff}
-.gchart .mdot{fill:#fff;stroke:var(--card);stroke-width:2}
+.gchart .gline{fill:none;stroke:var(--gline);stroke-width:2.8;stroke-linejoin:round;stroke-linecap:round}
+.gchart .gpt{fill:var(--gline)}
+.gchart .mdot{fill:var(--gline);stroke:var(--card);stroke-width:2}
 .gchart .dose{fill:var(--acc)}
 .gchart .dl{fill:var(--acc);font-size:10px;font-weight:700}
 .gchart .cur{stroke:#fff;stroke-width:2.5;fill:var(--in-b)}
@@ -112,7 +116,7 @@ table.bk small{color:var(--mut);display:block}
 nav{position:fixed;left:0;right:0;bottom:0;background:#171a20;display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom);z-index:5}
 nav button{flex:1;max-width:160px;background:none;border-radius:0;color:var(--mut);display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 2px 8px;font-size:13px;min-height:66px}
 nav button svg{width:28px;height:28px}
-nav button.on{color:#fff;font-weight:650}
+nav button.on{color:var(--ink);font-weight:650}
 dialog{border:none;border-radius:18px;background:var(--card);color:var(--ink);padding:18px;width:min(560px,94vw);max-height:88vh}
 dialog::backdrop{background:rgba(0,0,0,.6)}
 dialog h3{margin:0 0 10px;font-size:19px}

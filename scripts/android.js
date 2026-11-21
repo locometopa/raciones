@@ -83,10 +83,22 @@ if (!xml.includes('GlucoseService')) {
   xml = xml.replace('<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />' + perms.map((x) => '\n    <uses-permission android:name="android.permission.' + x + '" />').join(''));
   fs.writeFileSync(mf, xml);
 }
+// App del reloj (Wear OS): módulo «wear» con el mismo identificador
+const wearDst = path.join(root, 'android/wear');
+fs.rmSync(wearDst, { recursive: true, force: true });
+fs.cpSync(path.join(root, 'resources/wear'), wearDst, { recursive: true });
+{
+  const v = require(path.join(root, 'package.json')).version, pr = v.split('.').map(Number);
+  const wg = path.join(wearDst, 'build.gradle');
+  fs.writeFileSync(wg, fs.readFileSync(wg, 'utf8').replace('@VC@', String(pr[0] * 10000 + pr[1] * 100 + pr[2])).replace('@VN@', v));
+  const sg = path.join(root, 'android/settings.gradle');
+  let st = fs.readFileSync(sg, 'utf8');
+  if (!st.includes("':wear'")) fs.writeFileSync(sg, st + "\ninclude ':wear'\n");
+}
 const ag = path.join(root, 'android/app/build.gradle');
 let agt = fs.readFileSync(ag, 'utf8');
 if (!agt.includes('work-runtime')) {
-  agt = agt.replace(/dependencies \{/, "dependencies {\n    implementation 'androidx.work:work-runtime:2.10.0'");
+  agt = agt.replace(/dependencies \{/, "dependencies {\n    implementation 'androidx.work:work-runtime:2.10.0'\n    implementation 'com.google.android.gms:play-services-wearable:19.0.0'");
   if (!agt.includes('work-runtime')) throw new Error('No se pudo añadir WorkManager');
   fs.writeFileSync(ag, agt);
 }

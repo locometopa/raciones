@@ -1,0 +1,26 @@
+apply plugin: 'com.android.application'
+
+// App de iocrino para relojes Wear OS (Galaxy Watch4 y posteriores). Mismo identificador y misma firma que la del móvil,
+// así el móvil le puede pasar la glucosa por la capa de datos de Wear OS.
+android {
+    namespace 'es.locometopa.raciones.wear'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId 'es.locometopa.raciones'
+        minSdkVersion 30
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode @VC@
+        versionName '@VN@'
+    }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    lint { checkReleaseBuilds false; abortOnError false }
+}
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-wearable:19.0.0'
+    implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
+}
