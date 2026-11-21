@@ -58,7 +58,7 @@ public class MainActivity extends BridgeActivity {
 }
 `);
 xml = fs.readFileSync(mf, 'utf8');
-if (!xml.includes('GlucoseTile')) {
+if (!xml.includes('GlucoseService')) {
   const rcv = (cls, label, info) => `    <receiver android:name=".${cls}" android:exported="false" android:label="@string/${label}">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/${info}" />
@@ -66,6 +66,12 @@ if (!xml.includes('GlucoseTile')) {
 `;
   xml = xml.replace('</application>', rcv('GlucoseWidget', 'widget_label', 'widget_glucose_info') + rcv('GlucoseWidgetSmall', 'widget_label_small', 'widget_small_info') +
     rcv('GlucoseWidgetTall', 'widget_label_tall', 'widget_tall_info') + rcv('GlucoseWidgetBig', 'widget_label_big', 'widget_big_info') + rcv('GlucoseWidgetWide', 'widget_label_wide', 'widget_wide_info') + `    <receiver android:name=".NotifAction" android:exported="false" />
+        <service android:name=".GlucoseService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Mostrar en la barra y en la pantalla de bloqueo la glucosa del sensor en tiempo real" />
+        </service>
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
+        </receiver>
         <service android:name=".GlucoseTile" android:exported="true" android:label="@string/tile_label" android:icon="@drawable/ic_stat_iocrino" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
@@ -73,7 +79,8 @@ if (!xml.includes('GlucoseTile')) {
   // Atajos al mantener pulsado el icono
   xml = xml.replace(/(<activity[^>]*\.MainActivity"[\s\S]*?<\/intent-filter>)/, '$1\n            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />');
   if (!xml.includes('android.app.shortcuts')) throw new Error('No se pudieron añadir los atajos');
-  if (!xml.includes('POST_NOTIFICATIONS')) xml = xml.replace('<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />');
+  const perms = ['POST_NOTIFICATIONS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_SPECIAL_USE', 'RECEIVE_BOOT_COMPLETED', 'WAKE_LOCK'].filter((x) => !xml.includes('android.permission.' + x));
+  xml = xml.replace('<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />' + perms.map((x) => '\n    <uses-permission android:name="android.permission.' + x + '" />').join(''));
   fs.writeFileSync(mf, xml);
 }
 const ag = path.join(root, 'android/app/build.gradle');

@@ -49,10 +49,19 @@ public class BgWorker extends Worker {
     @Override
     public Result doWork() {
         Context c = getApplicationContext();
+        try {
+            JSONObject cfg = new JSONObject(IocrinoPlugin.prefs(c).getString("cfg", "{}"));
+            if (cfg.optBoolean("on", false)) fetch(c);
+        } catch (Exception ignored) { }
+        return Result.success();
+    }
+
+    /* Una lectura: la usan el trabajo periódico y el servicio de la glucosa fija. Sincronizado para no pisarse. */
+    static synchronized void fetch(Context c) {
         SharedPreferences p = IocrinoPlugin.prefs(c);
         try {
             JSONObject cfg = new JSONObject(p.getString("cfg", "{}"));
-            if (!cfg.optBoolean("on", false) || cfg.optString("email").isEmpty()) return Result.success();
+            if (cfg.optString("email").isEmpty()) return;
             JSONObject[] sess = { null };
             String ss = p.getString("session", "");
             if (!ss.isEmpty()) sess[0] = new JSONObject(ss);
@@ -68,18 +77,18 @@ public class BgWorker extends Worker {
             }
             if (rd.t > lastT) { JSONArray pt = new JSONArray(); pt.put(rd.t); pt.put(rd.v); keep.put(pt); }
             JSONObject last = new JSONObject(); last.put("v", rd.v); last.put("trend", rd.trend); last.put("t", rd.t);
-            p.edit().putString("hist", keep.toString()).putString("last", last.toString()).putString("session", sess[0].toString()).putString("err", "").apply();
+            p.edit().putString("hist", keep.toString()).putString("last", last.toString()).putString("session", sess[0].toString()).putString("err", "").putLong("fetchT", now).apply();
             GlucoseWidget.refreshAll(c);
 
             if (now - rd.t < 20 * M) alerts(c, p, cfg, keep, rd, now);
         } catch (Exception e) {
             p.edit().putString("err", String.valueOf(e.getMessage())).apply();
             if (e instanceof LibreClient.StepException) p.edit().remove("session").apply();
+            GlucoseNotif.update(c);  // marca la lectura como antigua si toca
         }
-        return Result.success();
     }
 
-    void alerts(Context c, SharedPreferences p, JSONObject cfg, JSONArray hist, LibreClient.Reading rd, long now) throws Exception {
+    static void alerts(Context c, SharedPreferences p, JSONObject cfg, JSONArray hist, LibreClient.Reading rd, long now) throws Exception {
         // Bajada (opcional; la app del Libre ya tiene sus alarmas). Como mucho, un aviso cada 30 min.
         if (cfg.optBoolean("low", false) && rd.v < cfg.optInt("hypo", 70) && now - p.getLong("lowT", 0) > 30 * M) {
             notify(c, 7400, "Glucosa baja: " + rd.v + " mg/dL", "Trátala como te enseñó tu equipo y vuelve a mirar en 15 minutos.");

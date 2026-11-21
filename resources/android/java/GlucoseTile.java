@@ -24,8 +24,7 @@ public class GlucoseTile extends TileService {
             cfg.put("persist", on);
             p.edit().putString("cfg", cfg.toString()).putString("persistSet", on ? "1" : "0").apply();
         } catch (Exception ignored) { }
-        GlucoseNotif.update(c);
-        if (on) BgWorker.runOnce(c);
+        GlucoseNotif.syncService(c);
         requestRefresh(c);
     }
 

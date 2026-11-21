@@ -48,6 +48,7 @@ public class IocrinoPlugin extends Plugin {
         e.apply();
         BgWorker.schedule(c, on);
         GlucoseWidget.refreshAll(c);  // también actualiza la glucosa fija
+        GlucoseNotif.syncService(c);
         call.resolve();
     }
 
