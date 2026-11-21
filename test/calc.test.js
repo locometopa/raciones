@@ -67,3 +67,8 @@ assert.strictEqual(C.slotFor(new Date(2026, 10, 21, 22, 0)), 'cena');
 assert.strictEqual(C.slotFor(new Date(2026, 10, 21, 2, 0)), 'cena');
 
 console.log('calc: todas las pruebas pasan');
+
+// Unidades y mililitros
+near(C.carbsOf({ grams: '2', hc100: 8, unit: 'ud' }), 16, 'dos sobres de azúcar');
+near(C.carbsOf({ grams: 200, hc100: 3.4, unit: 'ml' }), 6.8, 'café con leche');
+console.log('calc (unidades): todas las pruebas pasan');

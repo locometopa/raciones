@@ -12,6 +12,10 @@ App Android hecha con tecnología web (carpeta `www`) envuelta con Capacitor.
 - **Cálculo** (explicado en la app, «¿Cómo se calcula?»): comida (hidratos ÷ ratio de la franja) + corrección ((glucosa − objetivo) ÷ sensibilidad) − insulina activa. Con glucosa por debajo del umbral no sugiere dosis. La flecha de tendencia solo avisa, no cambia el número.
 - **Libre**: lee la última glucosa, la flecha y la gráfica por LibreLinkUp; se actualiza sola cada minuto con la app abierta (`www/js/libre.js`). No es una API oficial y solo funciona en la app instalada.
 - **Foto del plato (opcional, desactivada de serie)**: envía la foto a Claude, Gemini, ChatGPT, DeepSeek u otro servicio compatible con OpenAI (OpenRouter, Ollama, LM Studio) (`www/js/vision.js`). Propone alimentos y gramos aproximados que entran marcados como «estimado por foto». Se activa en Ajustes, con la ayuda para conseguir la clave de cada servicio. GitHub Models no está porque GitHub lo retiró el 30 de julio de 2026.
+- **Asistente de configuración**: se abre la primera vez (y desde Ajustes) y pregunta insulinas, ratio, corrección, duración, Libre e IA.
+- **Insulinas**: rápida (Fiasp por defecto en el asistente si la eliges) y lenta (Tresiba…). La lenta se apunta desde Ahora y no cuenta como insulina activa.
+- **Menos datos que escribir**: cada alimento se añade con la cantidad de la última vez o su ración normal, y hay botones con lo último que has tomado. Bebidas en ml y cosas por unidades (sobres de azúcar, rebanadas, piezas de fruta).
+- **Aprendizaje** (`www/js/learn.js`): con la gráfica del Libre mira la glucosa 2–3 h después de cada comida y muestra patrones por franja y por alimento. Solo observa: no cambia las pautas.
 - **Historial**: comidas y dosis registradas, insulina activa y exportación CSV.
 
 Los datos se guardan solo en el dispositivo (Ajustes → Copia de seguridad).

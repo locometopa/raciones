@@ -12,7 +12,7 @@ function boot(stored) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;
@@ -31,6 +31,25 @@ const setGlucose = (v, trend) => {
 // Versión coherente con package.json
 assert.strictEqual(w.__raciones.version, require('../package.json').version);
 
+// Primer arranque: se abre el asistente
+assert.ok($('#dlg').textContent.includes('Vamos a dejar la app lista'));
+const wzset = (p, v) => click($('[data-act="wzset"][data-p="' + p + '"][data-v="' + v + '"]'));
+click(act('wznext'));
+wzset('cfg.rapid', 'Fiasp'); wzset('cfg.basal', 'Tresiba'); wzset('cfg.step', '0.5');
+assert.ok($('[data-act="wzset"][data-v="Fiasp"]').classList.contains('on'));
+click(act('wznext'));
+type($('[data-s="cfg.ratioAll"]'), '1,5');
+click(act('wznext'));
+type($('[data-s="cfg.target"]'), '100'); type($('[data-s="cfg.isf"]'), '40');
+click(act('wznext'));
+assert.ok($('#dlg').textContent.includes('entre 3 y 5 horas'), 'nota de Fiasp');
+wzset('cfg.dia', '4');
+click(act('wznext')); assert.ok($('#dlg').textContent.includes('LibreLinkUp')); click(act('wznext')); assert.ok(act('wzback')); click(act('wznext'));
+assert.ok($('#dlg').textContent.includes('Resumen'));
+assert.strictEqual($('#dlg').querySelectorAll('b').length - Array.from($('#dlg').querySelectorAll('b')).filter((b) => b.textContent === 'falta').length, 4, 'insulinas, ratio, corrección y duración hechos');
+click(act('wznext'));
+assert.strictEqual(S().cfg.setup, 'ok'); assert.strictEqual(S().cfg.ratios.cena, '1,5'); assert.strictEqual(S().cfg.rapid, 'Fiasp');
+
 // Inicio: pantalla Ahora, sin glucosa ni gráfica
 assert.ok($('[data-tab="ahora"]').classList.contains('on'));
 assert.ok($('.gcard.none')); assert.ok(text().includes('Toca para escribirla'));
@@ -47,11 +66,11 @@ setGlucose(60); assert.ok($('.gcard.low'));
 click(act('editg')); $('#gi').value = '1800'; click(act('gsave'));
 assert.strictEqual(S().now.v, '60'); click(act('close'));
 
-// Ajustes: 1,5 U por ración en todas las franjas, sensibilidad 40, objetivo 100, 4 h, pluma de 0,5
-click($('[data-tab="ajustes"]'));
-['desayuno', 'comida', 'merienda', 'cena'].forEach((s) => type($('[data-s="cfg.ratios.' + s + '"]'), '1,5'));
-type($('[data-s="cfg.isf"]'), '40'); type($('[data-s="cfg.target"]'), '100'); type($('[data-s="cfg.dia"]'), '4');
-type($('[data-s="cfg.step"]'), '0.5');
+// Tresiba: se apunta desde Ahora y no cuenta como insulina activa
+assert.ok(text().includes('Tresiba (lenta)')); assert.ok(text().includes('sin apuntar'));
+click(act('basal')); $('#bu').value = '14'; click(act('basalsave'));
+assert.ok(text().includes('14 U · hace 0 min'));
+assert.ok(text().includes('Fiasp activa')); assert.ok($('.kv b').textContent.startsWith('0 U'), 'la lenta no suma: ' + $('.kv b').textContent);
 
 // Ahora → botón grande «Calcular comida»
 click($('[data-tab="ahora"]'));
@@ -64,6 +83,7 @@ type($('#qi'), 'arroz blanco coc');
 assert.ok($('#qr button[data-act="pick"]')); assert.ok(act('newfood'));
 click($('#qr button[data-act="pick"]'));
 assert.strictEqual(S().meal.items.length, 1);
+assert.strictEqual(S().meal.items[0].grams, '150', 'ración normal puesta'); assert.ok(text().includes('ración normal'));
 assert.strictEqual(d.activeElement, $('#items input.n'), 'el foco va a los gramos');
 type($('#items input.n'), '200');
 assert.ok(text().includes('56 g'), 'hidratos del arroz');
@@ -76,6 +96,7 @@ setGlucose(180, 2);
 assert.ok($('.dose b').textContent.startsWith('10,5'), 'dosis con corrección: ' + $('.dose b').textContent);
 assert.ok($('#sum').textContent.includes('10,5 U'));
 assert.ok(text().includes('bajando'));
+assert.ok(text().includes('Fiasp, según su prospecto'));
 assert.ok($('[data-tab="comida"]').classList.contains('on'), 'tras escribir la glucosa sigue en Comida');
 
 // HC a mano: +14 g → 70 g
@@ -93,12 +114,14 @@ assert.strictEqual($('#qr').innerHTML, '');
 
 // Guardar plato y registrar 12 U → vuelve a Ahora
 click(act('saveplate')); $('#pn').value = 'Arroz de prueba'; click(act('platesave'));
-click(act('log')); $('#ru').value = '12'; click(act('logsave'));
-assert.strictEqual(S().log.length, 1); assert.strictEqual(S().log[0].u, 12); assert.strictEqual(S().log[0].carbs, 70);
-assert.strictEqual(S().log[0].glucose, 180); assert.strictEqual(S().log[0].trend, 2);
+click(act('log')); assert.ok($('#dlg').textContent.includes('Unidades de Fiasp')); $('#ru').value = '12'; click(act('logsave'));
+assert.strictEqual(S().log.length, 2); assert.strictEqual(S().log[1].u, 12); assert.strictEqual(S().log[1].carbs, 70);
+const meal = S().log.find((e) => e.ins === 'rapida');
+assert.strictEqual(meal.glucose, 180); assert.strictEqual(meal.trend, 2);
+assert.strictEqual(S().lastQty['Arroz blanco cocido'], 200); assert.strictEqual(S().recent[0].name, 'Arroz blanco cocido');
 assert.strictEqual(S().meal.items.length, 0);
 assert.ok($('[data-tab="ahora"]').classList.contains('on'));
-assert.ok(text().includes('Insulina activa')); assert.ok(text().includes('Última dosis'));
+assert.ok(text().includes('Fiasp activa')); assert.ok(text().includes('Última dosis'));
 assert.ok($('.gchart .dose'), 'la dosis sale marcada en la gráfica');
 assert.ok($('.gchart .mdot'), 'la glucosa a mano sale como punto');
 
@@ -115,12 +138,26 @@ type($('#qi'), 'manzana'); click($('#qr button[data-act="pick"]'));
 click(act('portion')); assert.strictEqual(S().meal.items[0].grams, '180'); assert.ok(text().includes('= 21,6 g HC'));
 click(act('del'));
 
+// Recientes con la cantidad de la última vez
+click(act('recent')); const arroz = S().meal.items.find((x) => x.name === 'Arroz blanco cocido');
+assert.strictEqual(arroz.grams, '200'); assert.strictEqual(arroz.pre, 'last'); assert.ok(text().includes('cantidad de la última vez'));
+const dd = d.querySelectorAll('[data-act="del"]'); click(dd[dd.length - 1]);
+// Bebidas en ml y cosas por unidades
+type($('#qi'), 'cafe con leche'); assert.ok($('#qr').textContent.includes('g/100 ml')); click($('#qr button[data-act="pick"]'));
+assert.ok(text().includes('ml')); assert.ok(text().includes('= 6,8 g HC'), 'taza de 200 ml');
+type($('#qi'), 'sobre de azucar'); assert.ok($('#qr').textContent.includes('g HC/ud')); click($('#qr button[data-act="pick"]'));
+type($('#items .item2:last-child input.n'), '2'); assert.ok(text().includes('= 16 g HC'));
+assert.ok(text().includes('unidades'));
+d.querySelectorAll('[data-act="del"]').forEach(() => click($('[data-act="del"]')));
+assert.strictEqual(S().meal.items.length, 0);
+
 // Platos a un toque
 assert.ok(text().includes('Arroz de prueba'));
 click(act('useplate')); assert.strictEqual(S().meal.items.length, 2);
 
 // Registro
 click($('[data-tab="registro"]')); assert.ok(text().includes('12 U')); assert.ok($('#sum').hidden);
+assert.ok(text().includes('Aprendizaje')); assert.ok(text().includes('Lenta')); assert.ok($('.hc.lenta'));
 
 // Foto con IA: desactivada de serie
 click($('[data-tab="comida"]')); assert.ok(!act('photo'));

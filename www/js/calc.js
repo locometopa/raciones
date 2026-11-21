@@ -17,7 +17,8 @@
   function carbsOf(item) {
     if (item.hcDirect !== undefined && item.hcDirect !== null) return Math.max(0, num(item.hcDirect) || 0);
     var g = num(item.grams) || 0, hc = num(item.hc100) || 0;
-    return Math.max(0, g * hc / 100);
+    if (item.unit === 'ud') return Math.max(0, g * hc); // hc100 = hidratos por unidad
+    return Math.max(0, g * hc / 100); // por 100 g o por 100 ml
   }
 
   function mealCarbs(items) {

@@ -1,4 +1,7 @@
-/* Tabla base: [nombre, g de hidratos por 100 g (o 100 ml), categoría, porción habitual en g (opcional)]
+/* Tabla base: [nombre, hidratos, categoría, porción habitual, unidad]
+   unidad 'g' (por defecto): hidratos por 100 g y porción en gramos.
+   unidad 'ml': hidratos por 100 ml y porción en ml (bebidas).
+   unidad 'ud': hidratos por unidad (pieza, sobre, rebanada) y porción en unidades.
    Valores APROXIMADOS de tablas de composición habituales. La etiqueta del producto manda. */
 var FOODS = [
   // Pan, cereales y masas
@@ -64,19 +67,19 @@ var FOODS = [
   ['Frambuesas', 5, 'Fruta', 100],
   ['Dátiles', 65, 'Fruta', 20],
   ['Pasas', 68, 'Fruta', 20],
-  ['Zumo de naranja', 10, 'Fruta', 200],
-  ['Zumo de piña / melocotón', 12, 'Fruta', 200],
+  ['Zumo de naranja', 10, 'Fruta', 200, 'ml'],
+  ['Zumo de piña / melocotón', 12, 'Fruta', 200, 'ml'],
   // Lácteos
-  ['Leche', 5, 'Lácteos', 200],
+  ['Leche', 5, 'Lácteos', 200, 'ml'],
   ['Yogur natural', 5, 'Lácteos', 125],
   ['Yogur de sabores / azucarado', 13, 'Lácteos', 125],
   ['Yogur griego natural', 4, 'Lácteos', 125],
   ['Queso fresco', 3, 'Lácteos', 80],
   ['Queso curado', 0, 'Lácteos', 40],
   ['Cuajada', 5, 'Lácteos', 125],
-  ['Bebida de avena', 7, 'Lácteos', 200],
-  ['Bebida de soja sin azúcar', 1, 'Lácteos', 200],
-  ['Batido de cacao', 11, 'Lácteos', 200],
+  ['Bebida de avena', 7, 'Lácteos', 200, 'ml'],
+  ['Bebida de soja sin azúcar', 1, 'Lácteos', 200, 'ml'],
+  ['Batido de cacao', 11, 'Lácteos', 200, 'ml'],
   ['Natillas', 16, 'Lácteos', 125],
   ['Flan', 21, 'Lácteos', 110],
   ['Arroz con leche', 20, 'Lácteos', 130],
@@ -100,7 +103,7 @@ var FOODS = [
   ['Espárragos', 2, 'Verduras', 100],
   ['Pepino', 2, 'Verduras', 100],
   ['Puerro', 6, 'Verduras', 80],
-  ['Gazpacho', 4, 'Verduras', 250],
+  ['Gazpacho', 4, 'Verduras', 250, 'ml'],
   ['Tomate frito', 9, 'Verduras', 60],
   // Platos preparados
   ['Tortilla de patata', 9, 'Platos', 150],
@@ -144,13 +147,40 @@ var FOODS = [
   ['Polvorón / mantecado', 55, 'Dulces', 30],
   ['Kétchup', 24, 'Dulces', 15],
   // Bebidas
-  ['Refresco de cola / naranja / limón', 10.6, 'Bebidas', 330],
-  ['Refresco zero / light', 0, 'Bebidas', 330],
-  ['Tónica', 9, 'Bebidas', 200],
-  ['Bebida isotónica', 6, 'Bebidas', 330],
-  ['Cerveza', 3.5, 'Bebidas', 330],
-  ['Cerveza sin alcohol', 5, 'Bebidas', 330],
-  ['Horchata', 13, 'Bebidas', 200],
+  ['Refresco de cola / naranja / limón', 10.6, 'Bebidas', 330, 'ml'],
+  ['Refresco zero / light', 0, 'Bebidas', 330, 'ml'],
+  ['Tónica', 9, 'Bebidas', 200, 'ml'],
+  ['Bebida isotónica', 6, 'Bebidas', 330, 'ml'],
+  ['Cerveza', 3.5, 'Bebidas', 330, 'ml'],
+  ['Cerveza sin alcohol', 5, 'Bebidas', 330, 'ml'],
+  ['Horchata', 13, 'Bebidas', 200, 'ml'],
+  // Bebidas habituales (por 100 ml)
+  ['Café solo', 0, 'Bebidas', 50, 'ml'],
+  ['Café con leche sin azúcar (taza)', 3.4, 'Bebidas', 200, 'ml'],
+  ['Café cortado sin azúcar', 1.5, 'Bebidas', 60, 'ml'],
+  ['Leche con cacao soluble tipo Cola Cao (2 cucharadas)', 10.4, 'Bebidas', 216, 'ml'],
+  ['Infusión / té sin azúcar', 0, 'Bebidas', 200, 'ml'],
+  ['Vino', 1, 'Bebidas', 150, 'ml'],
+  ['Caldo / consomé', 1, 'Bebidas', 250, 'ml'],
+  // Por unidades (hidratos de cada unidad)
+  ['Sobre de azúcar (8 g)', 8, 'Por unidades', 1, 'ud'],
+  ['Cucharadita de azúcar', 5, 'Por unidades', 1, 'ud'],
+  ['Sacarina / edulcorante', 0, 'Por unidades', 1, 'ud'],
+  ['Cucharada de cacao soluble', 6, 'Por unidades', 2, 'ud'],
+  ['Rebanada de pan de molde', 13, 'Por unidades', 2, 'ud'],
+  ['Biscote', 7, 'Por unidades', 2, 'ud'],
+  ['Galleta María', 5.5, 'Por unidades', 4, 'ud'],
+  ['Magdalena', 17, 'Por unidades', 1, 'ud'],
+  ['Croqueta (mediana)', 6, 'Por unidades', 4, 'ud'],
+  ['Manzana mediana (pieza)', 20, 'Por unidades', 1, 'ud'],
+  ['Plátano mediano (pieza)', 22, 'Por unidades', 1, 'ud'],
+  ['Naranja mediana (pieza)', 16, 'Por unidades', 1, 'ud'],
+  ['Mandarina (pieza)', 7, 'Por unidades', 1, 'ud'],
+  ['Pera mediana (pieza)', 20, 'Por unidades', 1, 'ud'],
+  ['Kiwi (pieza)', 9, 'Por unidades', 1, 'ud'],
+  ['Yogur natural (unidad)', 6, 'Por unidades', 1, 'ud'],
+  ['Yogur de sabores (unidad)', 16, 'Por unidades', 1, 'ud'],
+  ['Huevo', 0, 'Por unidades', 2, 'ud'],
   // Frutos secos
   ['Almendras', 6, 'Frutos secos', 25],
   ['Nueces', 4, 'Frutos secos', 25],

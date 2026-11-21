@@ -52,7 +52,8 @@ var Chart = (function () {
     (o.marks || []).forEach(function (m) {
       if (!m || !(m.u > 0) || m.t < t0 || m.t > now + 60000) return;
       var mx2 = x(m.t), my = T + ph - 6, right = mx2 < L + pw - 34;
-      s.push('<circle class="dose" cx="' + f(mx2) + '" cy="' + my + '" r="4.5"/><text class="dl" x="' + f(right ? mx2 + 7 : mx2 - 7) + '" y="' + (my + 3.5) + '" text-anchor="' + (right ? 'start' : 'end') + '">' + n1(m.u) + ' U</text>');
+      var k = m.kind === 'basal' ? ' basal' : '';
+      s.push('<circle class="dose' + k + '" cx="' + f(mx2) + '" cy="' + my + '" r="4.5"/><text class="dl' + k + '" x="' + f(right ? mx2 + 7 : mx2 - 7) + '" y="' + (my + 3.5) + '" text-anchor="' + (right ? 'start' : 'end') + '">' + n1(m.u) + ' U</text>');
     });
 
     var all = pts.concat(dots).sort(function (a, b) { return a.t - b.t; });
