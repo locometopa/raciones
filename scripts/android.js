@@ -11,6 +11,12 @@ fs.copyFileSync(path.join(root, 'node_modules/@capacitor/core/dist/capacitor.js'
 if (!fs.existsSync(path.join(root, 'android'))) run('npx cap add android');
 run('npx cap sync android');
 
+// Iconos, pantalla de arranque e icono de los avisos (generados con scripts/iconos.py)
+const resSrc = path.join(root, 'resources/android/res');
+if (fs.existsSync(resSrc)) fs.cpSync(resSrc, path.join(root, 'android/app/src/main/res'), { recursive: true });
+const strings = path.join(root, 'android/app/src/main/res/values/strings.xml');
+fs.writeFileSync(strings, fs.readFileSync(strings, 'utf8').replace(/(<string name="(app_name|title_activity_main)">)[^<]*/g, '$1iocrino'));
+
 // Permiso de cámara (lector de códigos de barras). La cámara no es obligatoria.
 const mf = path.join(root, 'android/app/src/main/AndroidManifest.xml');
 let xml = fs.readFileSync(mf, 'utf8');

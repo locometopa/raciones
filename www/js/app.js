@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.8.0';
+  var VERSION = '0.9.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -31,17 +31,19 @@
       libre: { email: '', password: '', version: Libre.DEFAULT_VERSION, session: null, graph: [] },
       ai: { on: '0', provider: 'claude', keys: {}, models: {}, url: '' },
       now: { v: '', trend: 0, t: null, src: '' },
-      custom: [], plates: [], log: [], recent: [], lastQty: {},
+      custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
+      backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
       meal: { items: [], slot: '' }
     };
   }
   function merge(d, j) {
     if (!j || typeof j !== 'object') return d;
     var ratios = Object.assign({}, d.cfg.ratios, j.cfg && j.cfg.ratios);
-    ['cfg', 'libre', 'ai', 'now', 'meal'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
+    ['cfg', 'libre', 'ai', 'now', 'meal', 'backup'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
     d.cfg.ratios = ratios;
-    ['custom', 'plates', 'log', 'recent'].forEach(function (k) { if (Array.isArray(j[k])) d[k] = j[k]; });
+    ['custom', 'plates', 'log', 'recent', 'hist'].forEach(function (k) { if (Array.isArray(j[k])) d[k] = j[k]; });
     if (j.lastQty && typeof j.lastQty === 'object') d.lastQty = j.lastQty;
+    ['hipoCheck', 'missedOff'].forEach(function (k) { if (typeof j[k] === 'number') d[k] = j[k]; });
     if (!Array.isArray(d.meal.items)) d.meal.items = [];
     ['keys', 'models'].forEach(function (k) { if (!d.ai[k] || typeof d.ai[k] !== 'object') d.ai[k] = {}; });
     if (!Vision.PROVIDERS[d.ai.provider]) d.ai.provider = 'claude';
@@ -114,7 +116,7 @@
   }
 
   // ---------- cálculo ----------
-  function rapidLog() { return S.log.filter(function (e) { return e.ins !== 'basal'; }); }
+  function rapidLog() { return S.log.filter(function (e) { return !e.ins || e.ins === 'rapida'; }); }
   function activeInsulin() { return Calc.iob(rapidLog(), Date.now(), S.cfg.dia); }
   function rapidName() { return S.cfg.rapid && S.cfg.rapid !== 'Otra' ? S.cfg.rapid : 'insulina rápida'; }
   function hasBasal() { return S.cfg.basal && S.cfg.basal !== 'Ninguna'; }
@@ -139,13 +141,18 @@
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
+    var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
+    h += hipoCardHTML();
+    if (!S.hipoCheck) h += '<button class="lowbtn' + (lowish ? ' hot' : '') + '" data-act="hipo">Estoy bajo</button>';
+    var md = missedDose();
+    if (md) h += '<div class="note warn"><b>¿Te has pinchado?</b> Tu glucosa ha subido ' + fmt(md.rise, 0) + ' mg/dL en las últimas 2 horas y no hay ' + esc(rapidName()) + ' apuntada.<div class="row"><button class="pri" data-act="goto" data-v="comida">He comido: calcular</button><button data-act="dose">Ya me la puse</button><button class="ghost" data-act="missedoff">No, ignorar</button></div></div>';
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
     if (S.now.src === 'manual' && x.g.v !== null && S.now.t) dots.push({ t: S.now.t, v: x.g.v });
     h += '<section class="card chartc">' + Chart.svg({
-      now: now, hours: 12, points: S.libre.graph, dots: S.libre.graph.length ? [] : dots,
+      now: now, hours: 12, points: S.hist.filter(function (p) { return p[0] > now - 13 * 3600e3; }).map(function (p) { return { t: p[0], v: p[1] }; }).concat(S.hist.length ? [] : S.libre.graph), dots: S.hist.length || S.libre.graph.length ? [] : dots,
       marks: S.log.map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
       low: num(S.cfg.rangeLow) || 70, high: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250, cls: x.cls
     }) + '</section>';
@@ -412,12 +419,20 @@
     var h = '<section class="card"><div class="kv"><span>Insulina activa ahora</span><b>' + (num(S.cfg.dia) > 0 ? fu(activeInsulin()) : '—') + '</b></div>' +
       (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina rápida en Ajustes para calcularla.</p>') + '</section>';
     if (!S.log.length) h += '<section class="card"><p class="mut">Cuando registres una comida o una dosis aparecerá aquí.</p></section>';
-    else h += '<div class="row" style="margin-bottom:4px"><button data-act="csv">Copiar registro (CSV)</button></div>';
+    h += '<div class="row" style="margin-bottom:4px"><button class="pri" data-act="report">Informe para el endocrino</button><button data-act="dose">Apuntar dosis suelta</button>' + (S.log.length ? '<button data-act="csv">Copiar CSV</button>' : '') + '</div>';
     var lastDay = '';
     h = advisorHTML() + learnHTML() + h;
     S.log.slice().sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
       var d = new Date(e.t), day = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       if (day !== lastDay) { h += '<div class="day">' + esc(day) + '</div>'; lastDay = day; }
+      if (e.ins === 'hipo') {
+        h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · Bajada</b><small>' + (e.glucose != null ? fmt(e.glucose, 0) + ' mg/dL' : 'sin glucosa') + (e.what ? ' · tomó ' + esc(e.what) : '') + (e.treat ? ' · ' + fmt(e.treat, 0) + ' g HC' : '') + '</small></div><span class="hc" style="color:var(--lo-b)">↓</span><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
+        return;
+      }
+      if (!(e.carbs > 0) && e.ins !== 'basal') {
+        h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · ' + (e.kind === 'comida' ? 'Comida sin apuntar' : 'Corrección') + '</b><small>' + (e.glucose != null ? fmt(e.glucose, 0) + ' mg/dL' : '') + '</small></div><span class="hc">' + fu(e.u || 0) + '</span><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
+        return;
+      }
       if (e.ins === 'basal') {
         h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · Lenta</b><small>' + esc(e.name || 'insulina lenta') + '</small></div><span class="hc lenta">' + fu(e.u || 0) + '</span><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
         return;
@@ -472,7 +487,7 @@
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
-    h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. La app LibreLinkUp solo hace falta para crear esa cuenta y aceptar la invitación; después puedes desinstalarla y, si Abbott pide aceptar condiciones nuevas, Raciones te deja hacerlo desde aquí. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
+    h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. La app LibreLinkUp solo hace falta para crear esa cuenta y aceptar la invitación; después puedes desinstalarla y, si Abbott pide aceptar condiciones nuevas, iocrino te deja hacerlo desde aquí. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
       field('Correo de la cuenta LibreLinkUp', 'libre.email', 'type="email" autocomplete="off"') +
       field('Contraseña', 'libre.password', 'type="password" autocomplete="off"') +
       field('Versión que se anuncia a LibreLinkUp (avanzado)', 'libre.version', '') +
@@ -490,9 +505,189 @@
       '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
-    h += '<section class="card"><h2>Copia de seguridad</h2><p class="mut">Los datos viven solo en este dispositivo. Guarda una copia de vez en cuando.</p><div class="row"><button data-act="backup">Copiar copia de seguridad</button><button data-act="restore">Restaurar…</button></div></section>';
-    h += '<p class="fine" style="padding:0 6px">Raciones ' + VERSION + ' · Ayuda de cálculo personal, no un producto sanitario. Los valores de la tabla de alimentos son aproximados; manda la etiqueta.</p>';
+    h += backupHTML();
+    h += '<p class="fine" style="padding:0 6px">iocrino ' + VERSION + ' · Ayuda de cálculo personal, no un producto sanitario. Los valores de la tabla de alimentos son aproximados; manda la etiqueta.</p>';
     view.innerHTML = h;
+  }
+
+  // ---------- historial de glucosa (para el informe y los avisos) ----------
+  function addHist(points) {
+    if (!points || !points.length) return;
+    var cut = Date.now() - 90 * 24 * 3600e3, m = {};
+    S.hist.concat(points).forEach(function (p) { if (p && p[0] > cut && p[1] > 0) m[Math.round(p[0] / 300000)] = [p[0], Math.round(p[1])]; });
+    S.hist = Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a[0] - b[0]; });
+  }
+
+  // ---------- plugins nativos ----------
+  var plugCache = {};
+  function plug(name) {
+    if (!native || !window.Capacitor) return null;
+    if (plugCache[name]) return plugCache[name];
+    try { plugCache[name] = Capacitor.registerPlugin ? Capacitor.registerPlugin(name) : (Capacitor.Plugins || {})[name] || null; } catch (e) { plugCache[name] = null; }
+    return plugCache[name];
+  }
+  async function shareText(title, text) {
+    var sh = plug('Share');
+    if (sh) { try { await sh.share({ title: title, text: text, dialogTitle: title }); return; } catch (e) { if (e && /cancel/i.test(e.message || '')) return; } }
+    copyText(text, 'Copiado');
+  }
+  async function shareFile(name, content, title) {
+    var fs = plug('Filesystem'), sh = plug('Share');
+    if (fs && sh) {
+      try {
+        var w = await fs.writeFile({ path: name, data: content, directory: 'CACHE', encoding: 'utf8' });
+        await sh.share({ title: title, files: [w.uri], dialogTitle: title });
+        return true;
+      } catch (e) { if (e && /cancel/i.test(e.message || '')) return false; }
+    }
+    copyText(content, 'Copiado al portapapeles');
+    return false;
+  }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+
+  // ---------- «¿Te has pinchado?» ----------
+  function missedDose() {
+    var now = Date.now();
+    if (S.missedOff && now - S.missedOff < 3 * 3600e3) return null;
+    var h = S.hist; if (h.length < 4) return null;
+    var last = h[h.length - 1]; if (now - last[0] > 20 * 60000) return null;
+    var win = h.filter(function (p) { return p[0] >= last[0] - 2 * 3600e3; });
+    var mn = Math.min.apply(null, win.map(function (p) { return p[1]; })), rise = last[1] - mn;
+    if (rise < 60 || last[1] < 180) return null;
+    if (S.log.some(function (e) { return isRapidE(e) && e.u > 0 && e.t > now - 3 * 3600e3; })) return null;
+    return { rise: rise, v: last[1] };
+  }
+  function isRapidE(e) { return !e.ins || e.ins === 'rapida'; }
+  function dlgDose() {
+    openDlg('<h3>Apuntar ' + esc(rapidName()) + '</h3><p class="mut">Para una dosis sin calcular comida: una corrección, o una comida que no has apuntado.</p><label>Unidades</label><input id="du" inputmode="decimal">' +
+      '<label>Motivo</label><div class="chips" id="dk"><button class="chip on" data-act="dosekind" data-v="correccion">Corrección</button><button class="chip" data-act="dosekind" data-v="comida">Comida sin apuntar</button></div>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="dosesave">Guardar</button></div>');
+    var du = $('#du'); if (du) du.focus();
+  }
+
+  // ---------- «Estoy bajo» ----------
+  var HIPO_OPTS = [['Zumo (200 ml)', 20], ['Refresco normal (200 ml)', 21], ['2 sobres de azúcar', 16], ['Pastillas de glucosa', null], ['Otra cosa', null]];
+  function dlgHipo() {
+    var g = gNow();
+    openDlg('<h3>Estoy bajo</h3><div class="note bad" style="font-weight:400">Trátala como te enseñó tu equipo. Lo habitual es tomar hidratos de absorción rápida y volver a mirar la glucosa a los 15 minutos.</div>' +
+      '<label>Glucosa ahora (mg/dL)</label><input id="hg" inputmode="numeric" value="' + (g.v !== null && g.v < 100 && S.now.t && Date.now() - S.now.t < STALE_MS ? fmt(g.v, 0) : '') + '">' +
+      '<label>¿Qué has tomado? (opcional)</label><div class="chips" id="hw">' + HIPO_OPTS.map(function (o, i) { return '<button class="chip" data-act="hipowhat" data-i="' + i + '">' + esc(o[0]) + '</button>'; }).join('') + '</div>' +
+      '<label>Gramos de hidratos que has tomado (opcional)</label><input id="hgr" inputmode="decimal">' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="hiposave">Guardar y avisarme en 15 min</button></div>');
+  }
+  var hipoWhat = '';
+  async function scheduleHipo(at) {
+    var n = notifPlugin(); if (!n) return;
+    try {
+      await n.cancel({ notifications: [{ id: 7100 }] });
+      if (!at) return;
+      var perm = await n.checkPermissions(); if (perm.display !== 'granted') perm = await n.requestPermissions();
+      if (perm.display !== 'granted') return;
+      await n.schedule({ notifications: [{ id: 7100, title: 'Vuelve a mirar tu glucosa', body: 'Han pasado 15 minutos desde la bajada. ¿Cómo estás?', schedule: { at: new Date(at), allowWhileIdle: true }, extra: { kind: 'hipo' } }] });
+    } catch (e) { /* sin aviso */ }
+  }
+  function hipoCardHTML() {
+    if (!S.hipoCheck) return '';
+    var left = Math.ceil((S.hipoCheck - Date.now()) / 60000);
+    if (left > 0) return '<div class="note bad hipo">Bajada apuntada. Vuelve a mirar tu glucosa en <b>' + left + ' min</b>.<div class="row"><button data-act="hipook">Ya estoy bien</button></div></div>';
+    var g = gView();
+    return '<div class="note bad hipo"><b>Han pasado 15 minutos.</b> ¿Cómo estás?' + (g.g.v !== null && !g.old ? ' Tu glucosa ahora: <b>' + fmt(g.g.v, 0) + ' mg/dL</b>.' : '') +
+      '<div class="row"><button class="pri" data-act="hipook">Ya estoy bien</button><button data-act="hipo">Sigo bajo</button></div></div>';
+  }
+
+  // ---------- informe para el endocrino ----------
+  var repDays = 14;
+  function pct(v) { return v == null ? '—' : fmt(v, 0) + ' %'; }
+  function dlgReport() {
+    var r = Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: Date.now(), days: repDays }), g = r.glucose, h = '';
+    h += '<h3>Informe para el endocrino</h3><div class="chips">' + [7, 14, 30].map(function (d) { return '<button class="chip' + (d === repDays ? ' on' : '') + '" data-act="repdays" data-v="' + d + '">' + d + ' días</button>'; }).join('') + '</div>';
+    if (!g.n) h += '<p class="mut">Aún no hay datos del sensor en este periodo. Con el Libre conectado, la app guarda tu glucosa (hasta 90 días) cada vez que la abres.</p>';
+    else {
+      var bar = [['vlow', g.vlow, 'var(--lo-b)'], ['low', g.low, '#ff8a8a'], ['in', g.inr, 'var(--in-b)'], ['high', g.high, 'var(--hi-b)'], ['vhigh', g.vhigh, 'var(--vhi-b)']];
+      h += '<div class="tir">' + bar.map(function (b) { return '<span style="width:' + b[1].toFixed(2) + '%;background:' + b[2] + '"></span>'; }).join('') + '</div>' +
+        '<div class="kv"><span>En rango (70–180)</span><b>' + pct(g.inr) + '</b></div><p class="fine" style="margin:0">Objetivo general: más del 70 %.</p>' +
+        '<div class="kv"><span>Por encima de 180 / de 250</span><b>' + pct(g.high + g.vhigh) + ' / ' + pct(g.vhigh) + '</b></div>' +
+        '<div class="kv"><span>Por debajo de 70 / de 54</span><b>' + pct(g.low + g.vlow) + ' / ' + pct(g.vlow) + '</b></div>' +
+        '<div class="kv"><span>Media · HbA1c estimada (GMI)</span><b>' + fmt(g.mean, 0) + ' · ' + fmt(g.gmi, 1) + ' %</b></div>' +
+        '<div class="kv"><span>Variabilidad (CV)</span><b>' + fmt(g.cv, 0) + ' %</b></div>' +
+        '<div class="kv"><span>Datos del sensor</span><b>' + g.coverage + ' %</b></div>';
+    }
+    h += '<div class="lab">Insulina</div><div class="kv"><span>Rápida / lenta al día</span><b>' + (r.insulin.rapid != null ? fmt(r.insulin.rapid, 1) : '—') + ' / ' + (r.insulin.basal != null ? fmt(r.insulin.basal, 1) : '—') + ' U</b></div>' +
+      '<div class="kv"><span>Bajadas apuntadas</span><b>' + r.hipos.length + '</b></div>';
+    h += '<div class="lab">Comidas (medias)</div>' + SLOTS.map(function (s) { var m = r.meals[s[0]]; return '<div class="kv"><span>' + s[1] + ' <small class="mut">· ' + m.n + '</small></span><b>' + (m.n ? fmt(m.carbs, 0) + ' g · ' + fmt(m.u, 1) + ' U · ' + (m.pre != null ? fmt(m.pre, 0) : '—') + '→' + (m.post2 != null ? fmt(m.post2, 0) : '—') : '—') + '</b></div>'; }).join('') +
+      '<p class="fine">Comidas: hidratos · unidades · glucosa antes → 2 h después.</p>';
+    h += '<div class="acts"><button data-act="close">Cerrar</button><button data-act="repcsv">Compartir datos (CSV)</button><button class="pri" data-act="repshare">Compartir informe</button></div>';
+    openDlg(h);
+  }
+
+  // ---------- copias de seguridad ----------
+  function backupData() {
+    var c = JSON.parse(JSON.stringify(S));
+    c.libre.password = ''; c.libre.session = null; c.ai.keys = {}; c.backup.pass = '';
+    c.app = 'iocrino'; c.version = VERSION; c.saved = Date.now();
+    return JSON.stringify(c);
+  }
+  function restoreFrom(j) {
+    if (!j || typeof j !== 'object' || !j.cfg) throw new Error('no válida');
+    var keep = { pw: S.libre.password, keys: S.ai.keys, bk: S.backup };
+    S = merge(defaults(), j);
+    if (!S.libre.password) S.libre.password = keep.pw;
+    Object.keys(keep.keys).forEach(function (k) { if (!S.ai.keys[k]) S.ai.keys[k] = keep.keys[k]; });
+    S.backup = Object.assign({}, keep.bk, { last: keep.bk.last });
+    S.libre.session = null; save(); render(); scheduleBasal();
+  }
+  function davBase() { var u = String(S.backup.url || '').trim(); return u ? u.replace(/\/*$/, '/') : ''; }
+  function davHeaders() {
+    var h = { 'content-type': 'application/json' };
+    if (S.backup.user) h.authorization = 'Basic ' + btoa(unescape(encodeURIComponent(S.backup.user + ':' + (S.backup.pass || ''))));
+    return h;
+  }
+  function davError(status) {
+    if (status === 401 || status === 403) return 'El NAS rechaza el usuario o la contraseña.';
+    if (status === 404 || status === 409) return 'No existe esa carpeta en el NAS. Créala primero (por ejemplo con File Station).';
+    return 'El NAS respondió con un error (' + status + ').';
+  }
+  var nasBusy = false;
+  async function nasBackup(silent) {
+    var base = davBase(); if (!base || nasBusy) return;
+    nasBusy = true;
+    try {
+      var body = backupData();
+      for (var name of ['iocrino-ultima.json', 'iocrino-' + today() + '.json']) {
+        var res = await fetch(base + name, { method: 'PUT', headers: davHeaders(), body: body });
+        if (!(res.status >= 200 && res.status < 300)) throw new Error(davError(res.status));
+      }
+      S.backup.last = Date.now(); S.backup.err = ''; save();
+      if (!silent) toast('Copia guardada en el NAS');
+    } catch (e) {
+      S.backup.err = e && e.message && !/fetch|network|Failed/i.test(e.message) ? e.message : 'No se pudo conectar con el NAS (¿estás en casa o con Tailscale?).';
+      save(); if (!silent) msgDlg('No se pudo hacer la copia', S.backup.err);
+    } finally { nasBusy = false; if (tab === 'ajustes' && !dlg.open) render(); }
+  }
+  async function nasRestore() {
+    var base = davBase(); if (!base) { toast('Pon antes la dirección del NAS'); return; }
+    try {
+      var res = await fetch(base + 'iocrino-ultima.json', { headers: davHeaders() });
+      if (!(res.status >= 200 && res.status < 300)) throw new Error(davError(res.status));
+      var j = await res.json();
+      confirmDlg('Restaurar la copia del NAS' + (j.saved ? ' del ' + new Date(j.saved).toLocaleString('es-ES') : '') + '? Sustituye a los datos actuales.', function () { restoreFrom(j); toast('Copia restaurada'); });
+    } catch (e) { msgDlg('No se pudo restaurar', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  function autoBackup() {
+    if (S.backup.auto === '1' && davBase() && Date.now() - (S.backup.last || 0) > 20 * 3600e3) nasBackup(true);
+  }
+  function backupHTML() {
+    var b = S.backup;
+    return '<section class="card"><h2>Copias de seguridad</h2><p class="mut">Los datos viven en este móvil. Las copias no llevan contraseñas ni claves.</p>' +
+      '<div class="lab">Google Drive (u otro sitio)</div><p class="fine" style="margin-top:0">Pulsa el botón y en el menú elige «Drive» (o «Guardar en Drive»). Para restaurar, elige el archivo desde Drive.</p>' +
+      '<div class="row"><button class="pri" data-act="bkshare">Guardar copia en Drive…</button><button data-act="bkfile">Restaurar desde archivo</button></div>' +
+      '<div class="lab">NAS o servidor de casa (automática)</div><p class="fine" style="margin-top:0">Por WebDAV, una vez al día al abrir la app. En el Synology: Centro de paquetes → WebDAV Server, crea una carpeta (p. ej. «iocrino») y pon su dirección, por ejemplo http://192.168.1.150:5005/home/iocrino/ (o la IP de Tailscale para hacerlo desde fuera).</p>' +
+      field('Dirección WebDAV de la carpeta', 'backup.url', 'type="url" autocomplete="off" placeholder="http://192.168.1.150:5005/home/iocrino/"') +
+      '<div class="grid2"><div>' + field('Usuario', 'backup.user', 'autocomplete="off"') + '</div><div>' + field('Contraseña', 'backup.pass', 'type="password" autocomplete="off"') + '</div></div>' +
+      sel('Copia automática diaria', 'backup.auto', [['1', 'Sí'], ['0', 'No']]) +
+      '<p class="fine">' + (b.last ? 'Última copia: ' + new Date(b.last).toLocaleString('es-ES') + '.' : 'Aún no se ha hecho ninguna copia en el NAS.') + (b.err ? ' <span style="color:var(--warn)">' + esc(b.err) + '</span>' : '') + '</p>' +
+      '<div class="row"><button data-act="bknas">Hacer copia ahora</button><button data-act="bknasrestore">Restaurar desde el NAS</button></div>' +
+      '<details class="how"><summary>Copiar o pegar como texto</summary><div class="row"><button data-act="backup">Copiar copia</button><button data-act="restore">Pegar copia…</button></div></details></section>';
   }
 
   // ---------- lenta: dosis fija y aviso diario ----------
@@ -528,6 +723,7 @@
       await n.registerActionTypes({ types: [{ id: 'BASAL', actions: [{ id: 'apuntar', title: 'Apuntar' }] }] });
       n.addListener('localNotificationActionPerformed', function (ev) {
         var x = ev && ev.notification && ev.notification.extra;
+        if (x && x.kind === 'hipo') { tab = 'ahora'; render(); return; }
         if (!x || x.kind !== 'basal') return;
         if (ev.actionId === 'apuntar') quickBasal(true);
         else { tab = 'ahora'; render(); if (!basalDoneToday()) quickBasalAsk(); }
@@ -684,6 +880,7 @@
       Learn.update(S.log, out.graph || [], Date.now());
       var cut = Date.now() - 24 * 3600e3;
       if (out.graph && out.graph.length) S.libre.graph = out.graph.filter(function (p) { return p.t > cut; });
+      addHist((out.graph || []).map(function (p) { return [p.t, p.v]; }));
       var manualFresh = S.now.src === 'manual' && S.now.t && Date.now() - S.now.t < STALE_MS && !(out.reading.t > S.now.t);
       if (!silent || !manualFresh) S.now = { v: String(out.reading.mgdl), trend: out.reading.trend, t: out.reading.t || Date.now(), src: 'libre' };
       libreErr = ''; libreStep = null; save();
@@ -702,7 +899,7 @@
   }
   function dlgStep() {
     openDlg('<h3>LibreLinkUp pide aceptar algo</h3><p>' + esc(libreErr) + '</p>' +
-      '<p class="mut">Normalmente se acepta abriendo la app LibreLinkUp. Si no la tienes instalada, Raciones puede aceptarlo por ti: es lo mismo que pulsar «Aceptar» en su app. Puedes leer ' + esc(Libre.stepName(libreStep.type)) + ' en la web de Abbott (LibreView) antes de decidir.</p>' +
+      '<p class="mut">Normalmente se acepta abriendo la app LibreLinkUp. Si no la tienes instalada, iocrino puede aceptarlo por ti: es lo mismo que pulsar «Aceptar» en su app. Puedes leer ' + esc(Libre.stepName(libreStep.type)) + ' en la web de Abbott (LibreView) antes de decidir.</p>' +
       '<div class="acts"><button data-act="close">Ahora no</button><button class="pri" data-act="libreaccept">Aceptar y conectar</button></div>');
   }
   async function acceptLibreStep() {
@@ -776,6 +973,7 @@
         var gv = num($('#gi').value);
         if (gv === null || gv < 20 || gv > 600) { toast('Escribe una glucosa entre 20 y 600 mg/dL'); break; }
         S.now = { v: String(Math.round(gv)), trend: dlgTrend, t: Date.now(), src: 'manual' };
+        addHist([[S.now.t, Math.round(gv)]]);
         save(); closeDlg(); render(); break;
       }
       case 'barcode': dlgBarcode(); break;
@@ -848,14 +1046,43 @@
       case 'dellog': confirmDlg('¿Borrar este registro? Dejará de contar como insulina activa.', function () { S.log = S.log.filter(function (x) { return String(x.t) !== b.dataset.t; }); save(); render(); }); break;
       case 'csv': copyText(csv(), 'Registro copiado'); break;
       case 'delcustom': confirmDlg('¿Borrar «' + S.custom[i].name + '» de tus alimentos?', function () { S.custom.splice(i, 1); save(); render(); }); break;
-      case 'backup': { var copy = JSON.parse(JSON.stringify(S)); copy.libre.password = ''; copy.libre.session = null; copy.ai.keys = {}; copyText(JSON.stringify(copy), 'Copia de seguridad copiada (sin contraseñas ni claves)'); break; }
+      case 'backup': copyText(backupData(), 'Copia de seguridad copiada (sin contraseñas ni claves)'); break;
+      case 'bkshare': shareFile('iocrino-copia-' + today() + '.json', backupData(), 'Copia de seguridad de iocrino'); break;
+      case 'bkfile': $('#rfile').click(); break;
+      case 'bknas': nasBackup(false); break;
+      case 'bknasrestore': nasRestore(); break;
+      case 'report': repDays = 14; dlgReport(); break;
+      case 'repdays': repDays = +b.dataset.v; dlgReport(); break;
+      case 'repshare': shareText('Informe de iocrino', Report.text(Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: Date.now(), days: repDays }), 'iocrino')); break;
+      case 'repcsv': shareFile('iocrino-registro-' + today() + '.csv', csv(), 'Registro de iocrino'); break;
+      case 'dose': dlgDose(); break;
+      case 'dosekind': Array.prototype.forEach.call(document.querySelectorAll('#dk .chip'), function (c) { c.classList.toggle('on', c === b); }); break;
+      case 'dosesave': {
+        var dv = num($('#du').value); if (!(dv > 0) || dv > 100) { toast('Revisa las unidades'); break; }
+        var kind = ($('#dk .chip.on') || {}).dataset ? $('#dk .chip.on').dataset.v : 'correccion';
+        S.log.push({ t: Date.now(), ins: 'rapida', u: dv, carbs: 0, kind: kind, slot: curSlot(), glucose: gNow().v, iob: Math.round(activeInsulin() * 100) / 100 });
+        S.missedOff = 0; save(); closeDlg(); render(); toast(rapidName() + ' apuntada'); break;
+      }
+      case 'missedoff': S.missedOff = Date.now(); save(); render(); break;
+      case 'hipo': hipoWhat = ''; dlgHipo(); break;
+      case 'hipowhat': {
+        var o = HIPO_OPTS[i]; hipoWhat = o[0];
+        Array.prototype.forEach.call(document.querySelectorAll('#hw .chip'), function (c) { c.classList.toggle('on', c === b); });
+        if (o[1]) $('#hgr').value = o[1];
+        break;
+      }
+      case 'hiposave': {
+        var hv = num($('#hg').value), hgr = num($('#hgr').value), t9 = Date.now();
+        S.log.push({ t: t9, ins: 'hipo', carbs: 0, glucose: hv > 0 ? Math.round(hv) : null, treat: hgr > 0 ? hgr : null, what: hipoWhat || null });
+        if (hv > 0) addHist([[t9, Math.round(hv)]]);
+        S.hipoCheck = t9 + 15 * 60000; save(); closeDlg(); tab = 'ahora'; render(); scheduleHipo(S.hipoCheck);
+        toast('Apuntada. Te aviso en 15 minutos'); break;
+      }
+      case 'hipook': S.hipoCheck = 0; save(); scheduleHipo(0); render(); break;
       case 'restore': openDlg('<h3>Restaurar copia</h3><p class="mut">Pega aquí el texto de una copia de seguridad. Sustituye a los datos actuales.</p><textarea id="rs" rows="6"></textarea><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="restoredo">Restaurar</button></div>'); break;
       case 'restoredo': {
-        try {
-          var j = JSON.parse($('#rs').value); if (!j || typeof j !== 'object' || !j.cfg) throw 0;
-          var pw = S.libre.password, ak = S.ai.keys; S = merge(defaults(), j); if (!S.libre.password) S.libre.password = pw; Object.keys(ak).forEach(function (k) { if (!S.ai.keys[k]) S.ai.keys[k] = ak[k]; }); S.libre.session = null;
-          save(); closeDlg(); render(); toast('Copia restaurada');
-        } catch (err) { toast('Ese texto no es una copia válida'); }
+        try { restoreFrom(JSON.parse($('#rs').value)); closeDlg(); toast('Copia restaurada'); }
+        catch (err) { toast('Ese texto no es una copia válida'); }
         break;
       }
       case 'libre': readLibre(false); break;
@@ -873,12 +1100,23 @@
     inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) analyzePhoto(f); });
   });
   dlg.addEventListener('close', function () { stopScan(); wzOpen = false; });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { autoLibre(); refreshGlucoseUI(); scheduleBasal(); } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); } });
   setInterval(function () { if (document.hidden) return; autoLibre(); refreshGlucoseUI(); }, 30000);
 
   render();
   if (!S.cfg.setup && !configured()) { wz = 0; renderWz(); }
   initNotifications();
+  autoBackup();
+  var rf = $('#rfile');
+  if (rf) rf.addEventListener('change', function () {
+    var f = rf.files && rf.files[0]; rf.value = ''; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      try { var j = JSON.parse(rd.result); confirmDlg('Restaurar la copia' + (j.saved ? ' del ' + new Date(j.saved).toLocaleString('es-ES') : '') + '? Sustituye a los datos actuales.', function () { restoreFrom(j); toast('Copia restaurada'); }); }
+      catch (e) { msgDlg('No se pudo restaurar', 'Ese archivo no es una copia de iocrino.'); }
+    };
+    rd.readAsText(f);
+  });
   autoLibre();
-  window.__raciones = { state: function () { return S; }, showEstimate: showEstimate, version: VERSION, render: render };
+  window.__raciones = { state: function () { return S; }, missedDose: missedDose, nasBackup: nasBackup, addHist: addHist, showEstimate: showEstimate, version: VERSION, render: render };
 })();

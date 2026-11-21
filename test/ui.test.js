@@ -13,7 +13,7 @@ function boot(stored, pre) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;
@@ -124,7 +124,7 @@ assert.strictEqual(S().meal.items.length, 0);
 assert.ok($('[data-tab="ahora"]').classList.contains('on'));
 assert.ok(text().includes('Fiasp activa')); assert.ok(text().includes('Última dosis'));
 assert.ok($('.gchart .dose'), 'la dosis sale marcada en la gráfica');
-assert.ok($('.gchart .mdot'), 'la glucosa a mano sale como punto');
+assert.ok($('.gchart .gpt') || $('.gchart polyline'), 'la glucosa a mano sale en la gráfica');
 
 // La insulina activa descuenta en la siguiente comida
 click($('[data-tab="comida"]'));
@@ -294,6 +294,68 @@ w.close();
     const before = calls.cancel; q('[data-s="cfg.basalRemind"]').value = '0'; q('[data-s="cfg.basalRemind"]').dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
     assert.ok(calls.cancel > before);
     w.close();
+    await v09();
     console.log('interfaz: todas las pruebas pasan');
   })().catch((e) => { console.error(e); process.exit(1); });
+}
+
+// ---- 0.9: iocrino, dosis olvidada, «Estoy bajo», informe y copias ----
+async function v09() {
+  const H = 3600e3, M = 60000, t0 = Date.now();
+  const sched = [], puts = [];
+  const notif = { registerActionTypes: async () => {}, addListener: () => Promise.resolve({ remove() {} }), cancel: async () => {}, checkPermissions: async () => ({ display: 'granted' }), requestPermissions: async () => ({ display: 'granted' }), schedule: async (o) => { sched.push(...o.notifications); } };
+  // Subida de 100 en 2 h sin Fiasp apuntada
+  const hist = []; for (let k = 0; k <= 8; k++) hist.push([t0 - (120 - k * 15) * M, 120 + k * 12.5]);
+  const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok' };
+  const w = boot({ cfg, log: [{ t: t0 - 5 * H, ins: 'rapida', slot: 'comida', carbs: 50, u: 5 }], hist, now: { v: '220', trend: 4, t: t0 - M, src: 'libre' }, backup: { url: 'http://192.168.1.150:5005/home/iocrino', user: 'yo', pass: 'secreta', auto: '0' } }, (win) => {
+    win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : null) };
+    win.fetch = async (url, opt) => { puts.push({ url, opt }); return { status: 201, json: async () => ({}) }; };
+  });
+  const d = w.document, q = (s) => d.querySelector(s), vt = () => q('#view').textContent;
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+  await tick();
+  // Nombre y logo
+  assert.ok(q('header').textContent.includes('iocrino')); assert.ok(q('header svg.logo'));
+  // ¿Te has pinchado?
+  assert.ok(vt().includes('¿Te has pinchado?'), 'aviso de dosis olvidada'); assert.ok(vt().includes('subido 100'));
+  k(q('[data-act="dose"]')); q('#du').value = '3'; k(q('[data-act="dosekind"][data-v="comida"]')); k(q('[data-act="dosesave"]'));
+  const dose = w.__raciones.state().log.slice(-1)[0];
+  assert.strictEqual(dose.u, 3); assert.strictEqual(dose.kind, 'comida'); assert.strictEqual(dose.carbs, 0);
+  assert.ok(!vt().includes('¿Te has pinchado?'), 'con la dosis apuntada desaparece');
+  // «Estoy bajo»: apunta, programa el aviso a los 15 min y lo muestra
+  k(q('[data-act="hipo"]')); assert.strictEqual(q('#hg').value, '', 'con 220 no se rellena'); q('#hg').value = '62'; k(q('[data-act="hipowhat"][data-i="0"]'));
+  assert.strictEqual(q('#hgr').value, '20');
+  k(q('[data-act="hiposave"]')); await tick();
+  const hp = w.__raciones.state().log.slice(-1)[0];
+  assert.strictEqual(hp.ins, 'hipo'); assert.strictEqual(hp.glucose, 62); assert.strictEqual(hp.what, 'Zumo (200 ml)');
+  const s15 = sched.find((n) => n.id === 7100); assert.ok(s15 && Math.abs(new Date(s15.schedule.at).getTime() - (hp.t + 15 * M)) < 2000);
+  assert.ok(vt().includes('Vuelve a mirar tu glucosa en')); assert.ok(!q('.lowbtn'));
+  w.__raciones.state().hipoCheck = Date.now() - 1000; w.__raciones.render();
+  assert.ok(vt().includes('Han pasado 15 minutos')); k(q('[data-act="hipook"]')); assert.strictEqual(w.__raciones.state().hipoCheck, 0); assert.ok(q('.lowbtn'));
+  // La bajada no es una comida ni insulina
+  assert.ok(vt().includes('Fiasp activa'));
+  // Informe
+  k(q('[data-tab="registro"]')); assert.ok(vt().includes('Bajada')); assert.ok(vt().includes('Comida sin apuntar'));
+  k(q('[data-act="report"]')); assert.ok(q('#dlg').textContent.includes('Informe para el endocrino')); assert.ok(q('#dlg').textContent.includes('En rango (70–180)'));
+  assert.ok(q('#dlg').textContent.includes('Bajadas apuntadas1'));
+  k(q('[data-act="repdays"][data-v="7"]')); assert.ok(q('[data-act="repdays"][data-v="7"]').classList.contains('on'));
+  k(q('[data-act="close"]'));
+  // Copia en el NAS: PUT con usuario y sin la contraseña dentro
+  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Guardar copia en Drive'));
+  await w.__raciones.nasBackup(false);
+  assert.strictEqual(puts.length, 2); assert.strictEqual(puts[0].url, 'http://192.168.1.150:5005/home/iocrino/iocrino-ultima.json');
+  assert.strictEqual(puts[0].opt.method, 'PUT'); assert.ok(puts[0].opt.headers.authorization.startsWith('Basic '));
+  const saved = JSON.parse(puts[0].opt.body); assert.strictEqual(saved.backup.pass, ''); assert.strictEqual(saved.app, 'iocrino'); assert.ok(saved.hist.length > 5);
+  assert.ok(w.__raciones.state().backup.last > 0);
+  // Restaurar desde archivo (Drive): mantiene la contraseña del NAS de este móvil
+  const file = new w.File([JSON.stringify(Object.assign({}, saved, { cfg: Object.assign({}, saved.cfg, { isf: '30' }) }))], 'copia.json', { type: 'application/json' });
+  const rf = q('#rfile'); Object.defineProperty(rf, 'files', { value: [file], configurable: true }); rf.dispatchEvent(new w.Event('change'));
+  await new Promise((r) => setTimeout(r, 80));
+  assert.ok(q('#dlg').textContent.includes('Restaurar la copia')); k(q('[data-act="yes"]'));
+  assert.strictEqual(w.__raciones.state().cfg.isf, '30'); assert.strictEqual(w.__raciones.state().backup.pass, 'secreta');
+  // Error del NAS: mensaje claro
+  w.fetch = async () => ({ status: 401, json: async () => ({}) });
+  await w.__raciones.nasBackup(true); assert.ok(w.__raciones.state().backup.err.includes('usuario o la contraseña'));
+  w.close();
 }

@@ -9,7 +9,7 @@ var Learn = (function () {
     for (var i = 0; i < graph.length; i++) { var d = Math.abs(graph[i].t - t); if (d < bd) { bd = d; best = graph[i]; } }
     return best && bd <= tol ? best.v : null;
   }
-  function isRapid(e) { return e && e.ins !== 'basal'; }
+  function isRapid(e) { return !!e && (!e.ins || e.ins === 'rapida'); }
 
   /* Resultado de una comida: glucosa a las 2 y 3 h, máximo y mínimo en 4 h. null si no hay datos. */
   function outcome(entry, graph) {
@@ -34,6 +34,8 @@ var Learn = (function () {
     return changed;
   }
 
+  /* Glucosa a las 3 h (o a las 2 h si no la hay) */
+  function gEnd(e) { return e.post.g3 != null ? e.post.g3 : e.post.g2 != null ? e.post.g2 : null; }
   function avg(a) { return a.length ? a.reduce(function (s, x) { return s + x; }, 0) / a.length : null; }
 
   /* o: {now, days, low, high, target}. Devuelve {n, slots:{franja:{n,avg3,lows,highs,level,text}}, foods:[{name,n,rise}]} */
@@ -42,14 +44,14 @@ var Learn = (function () {
     var now = o.now || Date.now(), since = now - (o.days || 30) * 24 * H;
     var low = o.low || 70, high = o.high || 180, target = o.target || 100;
     var meals = (log || []).filter(function (e) {
-      if (!isRapid(e) || !(e.carbs > 0) || !e.post || e.post.none || e.t < since) return false;
+      if (!isRapid(e) || !(e.carbs > 0) || !e.post || e.post.none || e.t < since || gEnd(e) == null) return false;
       // Si hubo otra dosis rápida en las 3 h siguientes (corrección), la comida no sirve para aprender
       return !log.some(function (x) { return x !== e && isRapid(x) && x.u > 0 && x.t > e.t && x.t < e.t + 3 * H; });
     });
     var slots = {};
     ['desayuno', 'comida', 'merienda', 'cena'].forEach(function (k) {
       var m = meals.filter(function (e) { return e.slot === k; });
-      var r = { n: m.length, avg3: avg(m.map(function (e) { return e.post.g3; })), lows: m.filter(function (e) { return e.post.min < low; }).length, highs: m.filter(function (e) { return e.post.g3 > high; }).length };
+      var r = { n: m.length, avg3: avg(m.map(gEnd)), lows: m.filter(function (e) { return e.post.min < low; }).length, highs: m.filter(function (e) { return gEnd(e) > high; }).length };
       if (r.n < 5) { r.level = 'pocos'; r.text = 'Aún pocos datos (' + r.n + ' de 5 comidas).'; }
       else if (r.lows / r.n >= 0.2) { r.level = 'bajo'; r.text = 'En ' + r.lows + ' de ' + r.n + ' comidas bajaste de ' + low + ' en las 4 h siguientes. Puede que en esta franja te sobre insulina.'; }
       else if (r.avg3 > high) { r.level = 'alto'; r.text = 'A las 3 h sueles estar en ~' + Math.round(r.avg3) + ' mg/dL. Puede que en esta franja te quedes corto de insulina.'; }
@@ -62,7 +64,7 @@ var Learn = (function () {
     meals.forEach(function (e) {
       if (e.glucose == null) return;
       var names = String(e.items || '').split(', ').filter(Boolean);
-      names.forEach(function (nm) { (by[nm] = by[nm] || []).push(e.post.g3 - e.glucose); });
+      names.forEach(function (nm) { (by[nm] = by[nm] || []).push(gEnd(e) - e.glucose); });
     });
     var foods = Object.keys(by).filter(function (k) { return by[k].length >= 3; })
       .map(function (k) { return { name: k, n: by[k].length, rise: Math.round(avg(by[k])) }; })
@@ -94,7 +96,7 @@ var Learn = (function () {
       var from = Math.max(since, changedAt);
       var all = (log || []).filter(function (e) { return isRapid(e) && e.slot === k && e.carbs > 0 && e.post && !e.post.none && e.t >= from; });
       var clean = all.filter(function (e) { return !log.some(function (x) { return x !== e && isRapid(x) && x.u > 0 && x.t > e.t && x.t < e.t + 3 * H; }); });
-      var lows = all.filter(function (e) { return e.post.min < low; }).length;
+      var lows = all.filter(function (e) { return e.post.min < low || log.some(function (x) { return x.ins === 'hipo' && x.t > e.t && x.t < e.t + 4 * H; }); }).length;
       var est = [];
       if (isf > 0) clean.forEach(function (e) {
         if (!(e.carbs >= 20) || e.glucose == null || !(e.u > 0)) return;

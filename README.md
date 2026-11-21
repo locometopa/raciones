@@ -1,6 +1,6 @@
-# Raciones
+# iocrino
 
-Calculadora personal de raciones de hidratos y dosis de insulina rápida, con lectura del sensor FreeStyle Libre.
+iocrino (antes «Raciones»): calculadora personal de raciones de hidratos y dosis de insulina rápida, con lectura del sensor FreeStyle Libre. El paquete Android sigue siendo es.locometopa.raciones para que las actualizaciones se instalen encima.
 App Android hecha con tecnología web (carpeta `www`) envuelta con Capacitor.
 
 > Ayuda de cálculo personal, no un producto sanitario. Solo calcula con las pautas que el usuario escribe en Ajustes.
@@ -20,6 +20,11 @@ App Android hecha con tecnología web (carpeta `www`) envuelta con Capacitor.
 - **Flechas**: opción para sumar o restar 50/75/100 mg/dL según la flecha (regla del mismo documento).
 - **Guía fácil**: explicaciones desde cero dentro de la app.
 - **Lenta con dosis fija**: si te pones siempre lo mismo, «Apuntar» es un toque y un aviso diario a tu hora (con botón «Apuntar») te recuerda si aún no la has apuntado.
+- **¿Te has pinchado?**: si la glucosa sube 60 mg/dL o más en 2 h hasta pasar de 180 y no hay rápida apuntada en 3 h, avisa en Ahora (se comprueba al abrir la app). Las dosis sueltas (correcciones o comidas sin apuntar) se registran aparte.
+- **Estoy bajo**: apunta la bajada (glucosa y lo que has tomado) y avisa a los 15 minutos para volver a mirar.
+- **Informe para el endocrino** (Registro): 7/14/30 días con tiempo en rango, media, GMI, variabilidad, insulina diaria, comidas y bajadas; se comparte como texto o CSV. La app guarda el historial de glucosa del Libre hasta 90 días.
+- **Copias de seguridad**: a Google Drive (u otro sitio) con el menú compartir, automática diaria a un NAS/servidor por WebDAV, y restauración desde archivo o desde el NAS.
+- **Logo**: generado con `scripts/iconos.py` en `resources/android/res` (se copia al compilar).
 - **Historial**: comidas y dosis registradas, insulina activa y exportación CSV.
 
 Los datos se guardan solo en el dispositivo (Ajustes → Copia de seguridad).

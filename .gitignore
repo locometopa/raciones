@@ -1,7 +1,8 @@
 node_modules/
-android/
+/android/
 *.apk
 *.jks
 *.keystore
 firma/
 www/js/capacitor.js
+scripts/__pycache__/

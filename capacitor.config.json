@@ -1,8 +1,14 @@
 {
   "appId": "es.locometopa.raciones",
-  "appName": "Raciones",
+  "appName": "iocrino",
   "webDir": "www",
   "plugins": {
-    "CapacitorHttp": { "enabled": true }
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_iocrino",
+      "iconColor": "#5CCBBB"
+    }
   }
 }
