@@ -47,7 +47,12 @@ var Libre = (function () {
       if (d.redirect && d.region) { host = 'api-' + d.region + '.libreview.io'; continue; }
       if ((b.status === 920 || r.http === 403) && d.minimumVersion && d.minimumVersion !== version) { version = d.minimumVersion; continue; }
       if (b.status === 2) throw LibreError('auth', 'Correo o contraseña de LibreLinkUp incorrectos.');
-      if (b.status === 4) throw LibreError('step', 'LibreLinkUp pide un paso pendiente (' + ((d.step && d.step.type) || 'aceptar condiciones') + '). Abre la app LibreLinkUp, acéptalo y vuelve a probar.');
+      if (b.status === 4) {
+        var type = (d.step && d.step.type) || '';
+        var e4 = LibreError('step', 'LibreLinkUp pide aceptar ' + stepName(type) + ' antes de dejar leer la glucosa.');
+        e4.step = { type: type, ticket: d.authTicket && d.authTicket.token, host: host, version: version };
+        throw e4;
+      }
       if (b.status === 429 || b.status === 430 || r.http === 429 || r.http === 430) throw LibreError('rate', 'LibreLinkUp ha bloqueado temporalmente el acceso por demasiados intentos. Espera unos minutos.');
       if (b.status === 0 && d.authTicket && d.authTicket.token && d.user && d.user.id) {
         var exp = Number(d.authTicket.expires) || 0;
@@ -60,6 +65,21 @@ var Libre = (function () {
       throw LibreError('proto', 'Respuesta inesperada de LibreLinkUp (HTTP ' + r.http + ', estado ' + b.status + '). Puede que Abbott haya cambiado el servicio.');
     }
     throw LibreError('proto', 'No se pudo iniciar sesión en LibreLinkUp.');
+  }
+
+  function stepName(type) {
+    return type === 'tou' ? 'las nuevas condiciones de uso' : type === 'pp' ? 'la nueva política de privacidad' : 'un documento nuevo' + (type ? ' (' + type + ')' : '');
+  }
+
+  /* Acepta el paso pendiente (condiciones, privacidad) igual que la app LibreLinkUp.
+     Solo se llama cuando el usuario lo pide expresamente. */
+  async function acceptStep(step) {
+    if (!step || !step.type || !step.ticket || !/^[a-z0-9_-]+$/i.test(step.type)) throw LibreError('proto', 'No hay ningún paso pendiente que aceptar.');
+    var h = headers(step.version || DEFAULT_VERSION);
+    h['authorization'] = 'Bearer ' + step.ticket;
+    var r = await request(step.host || DEFAULT_HOST, '/auth/continue/' + step.type, { method: 'POST', headers: h });
+    if (r.http >= 400 || (r.body.status !== undefined && r.body.status !== 0 && r.body.status !== 4)) throw LibreError('proto', 'LibreLinkUp no ha aceptado el paso (HTTP ' + r.http + '). Prueba a hacerlo desde la app LibreLinkUp.');
+    return true;
   }
 
   /* Fechas de LibreLinkUp: "11/21/2026 4:26:03 AM". FactoryTimestamp va en UTC; Timestamp en hora local. */
@@ -120,7 +140,7 @@ var Libre = (function () {
     throw LibreError('auth', 'LibreLinkUp rechaza la sesión. Revisa correo y contraseña.');
   }
 
-  var api = { read: read, parseLLU: parseLLU, DEFAULT_VERSION: DEFAULT_VERSION };
+  var api = { read: read, acceptStep: acceptStep, stepName: stepName, parseLLU: parseLLU, DEFAULT_VERSION: DEFAULT_VERSION };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   return api;
 })();

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.4.0';
+  var VERSION = '0.4.1';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -16,7 +16,7 @@
   var num = Calc.num;
   var tab = 'ahora';
   var pending = null, bcProduct = null, estimate = null, stream = null, scanTimer = null;
-  var lastLibreTry = 0, libreBusy = false, libreErr = '', dlgTrend = 0;
+  var lastLibreTry = 0, libreBusy = false, libreErr = '', libreStep = null, dlgTrend = 0;
 
   // ---------- estado ----------
   function defaults() {
@@ -119,7 +119,7 @@
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
-    if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + '</p>';
+    if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
@@ -376,7 +376,7 @@
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
-    h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
+    h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. La app LibreLinkUp solo hace falta para crear esa cuenta y aceptar la invitación; después puedes desinstalarla y, si Abbott pide aceptar condiciones nuevas, Raciones te deja hacerlo desde aquí. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
       field('Correo de la cuenta LibreLinkUp', 'libre.email', 'type="email" autocomplete="off"') +
       field('Contraseña', 'libre.password', 'type="password" autocomplete="off"') +
       field('Versión que se anuncia a LibreLinkUp (avanzado)', 'libre.version', '') +
@@ -417,17 +417,33 @@
       if (out.graph && out.graph.length) S.libre.graph = out.graph.filter(function (p) { return p.t > cut; });
       var manualFresh = S.now.src === 'manual' && S.now.t && Date.now() - S.now.t < STALE_MS && !(out.reading.t > S.now.t);
       if (!silent || !manualFresh) S.now = { v: String(out.reading.mgdl), trend: out.reading.trend, t: out.reading.t || Date.now(), src: 'libre' };
-      libreErr = ''; save();
+      libreErr = ''; libreStep = null; save();
       if (!silent && tab === 'ajustes') msgDlg('Libre', 'Lectura correcta: ' + out.reading.mgdl + ' mg/dL ' + (TREND[out.reading.trend] ? TREND[out.reading.trend][0] : '') + ' · ' + out.graph.length + ' puntos en la gráfica.');
       else refreshGlucoseUI();
     } catch (e) {
       S.libre.session = null; save();
       libreErr = e && e.message ? e.message : 'Error desconocido';
-      if (!silent) msgDlg('No se pudo leer el Libre', libreErr); else if (tab === 'ahora') refreshGlucoseUI();
+      libreStep = e && e.code === 'step' && e.step && e.step.ticket ? e.step : null;
+      if (!silent) { if (libreStep) dlgStep(); else msgDlg('No se pudo leer el Libre', libreErr); }
+      else if (tab === 'ahora') refreshGlucoseUI();
     } finally {
       libreBusy = false;
       card = $('.gcard'); if (card) card.classList.remove('busy');
     }
+  }
+  function dlgStep() {
+    openDlg('<h3>LibreLinkUp pide aceptar algo</h3><p>' + esc(libreErr) + '</p>' +
+      '<p class="mut">Normalmente se acepta abriendo la app LibreLinkUp. Si no la tienes instalada, Raciones puede aceptarlo por ti: es lo mismo que pulsar «Aceptar» en su app. Puedes leer ' + esc(Libre.stepName(libreStep.type)) + ' en la web de Abbott (LibreView) antes de decidir.</p>' +
+      '<div class="acts"><button data-act="close">Ahora no</button><button class="pri" data-act="libreaccept">Aceptar y conectar</button></div>');
+  }
+  async function acceptLibreStep() {
+    var st = libreStep; if (!st) { closeDlg(); return; }
+    openDlg('<h3>LibreLinkUp</h3><p class="mut">Aceptando…</p>');
+    try {
+      await Libre.acceptStep(st);
+      libreStep = null; libreErr = ''; closeDlg();
+      lastLibreTry = 0; readLibre(false);
+    } catch (e) { msgDlg('No se pudo aceptar', e && e.message ? e.message : 'Error desconocido'); }
   }
   function autoLibre() {
     if (!native || document.hidden || (tab !== 'ahora' && tab !== 'comida') || Date.now() - lastLibreTry < 60000) return;
@@ -532,6 +548,8 @@
         break;
       }
       case 'libre': readLibre(false); break;
+      case 'librestep': if (libreStep) dlgStep(); else readLibre(false); break;
+      case 'libreaccept': acceptLibreStep(); break;
       case 'libretest': readLibre(false); break;
     }
   });

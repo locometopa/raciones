@@ -67,6 +67,22 @@ const cfg = { email: 'a@b.c', password: 'x' };
   const fails = async (resp, code) => { queue = resp; await assert.rejects(Libre.read(cfg), (e) => e.code === code); };
   await fails([{ body: { status: 2 } }], 'auth');
   await fails([{ body: { status: 4, data: { step: { type: 'tou' }, authTicket: { token: 't' } } } }], 'step');
+  // Paso pendiente: el error trae lo necesario y se acepta en /auth/continue/<tipo> con el ticket
+  queue = [{ body: { status: 0, data: { redirect: true, region: 'eu2' } } }, { body: { status: 4, data: { step: { type: 'tou', componentName: 'AcceptDocument' }, authTicket: { token: 'ticket4' } } } }];
+  let stepErr = null;
+  try { await Libre.read(cfg); } catch (e) { stepErr = e; }
+  assert.strictEqual(stepErr.code, 'step'); assert.ok(stepErr.message.includes('condiciones de uso'));
+  assert.deepStrictEqual(stepErr.step, { type: 'tou', ticket: 'ticket4', host: 'api-eu2.libreview.io', version: '5.0.1' });
+  queue = [{ body: { status: 0, data: {} } }]; calls = [];
+  assert.strictEqual(await Libre.acceptStep(stepErr.step), true);
+  assert.strictEqual(calls[0].url, 'https://api-eu2.libreview.io/auth/continue/tou');
+  assert.strictEqual(calls[0].opt.method, 'POST');
+  assert.strictEqual(calls[0].opt.headers.authorization, 'Bearer ticket4');
+  assert.strictEqual(calls[0].opt.headers['account-id'], undefined);
+  queue = [{ http: 401, body: {} }];
+  await assert.rejects(Libre.acceptStep(stepErr.step), (e) => e.code === 'proto');
+  await assert.rejects(Libre.acceptStep({ type: '../x', ticket: 't' }), (e) => e.code === 'proto');
+  assert.ok(Libre.stepName('pp').includes('privacidad'));
   await fails([{ body: { status: 429 } }], 'rate');
   await fails([okLogin, { body: { status: 0, data: [] } }], 'noconn');
   await assert.rejects(Libre.read({ email: '', password: '' }), (e) => e.code === 'cfg');
