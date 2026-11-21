@@ -44,6 +44,8 @@ public class GlucoseWidget extends AppWidgetProvider {
         refresh(c, m, GlucoseWidgetSmall.class, R.layout.widget_small, false);
         refresh(c, m, GlucoseWidgetTall.class, R.layout.widget_tall, false);
         refresh(c, m, GlucoseWidgetBig.class, R.layout.widget_big, true);
+        refresh(c, m, GlucoseWidgetWide.class, R.layout.widget_wide, true);
+        GlucoseNotif.update(c);
     }
 
     static void refresh(Context c, AppWidgetManager m, Class<?> cls, int layout, boolean chart) {
@@ -92,7 +94,10 @@ public class GlucoseWidget extends AppWidgetProvider {
         v.setTextViewText(R.id.w_time, sub);
         v.setOnClickPendingIntent(R.id.w_root, open(c, null, 0));
         if (withChart) {
-            try { v.setImageViewBitmap(R.id.w_chart, chartBitmap(new JSONArray(p.getString("hist", "[]")), cfg)); } catch (Exception ignored) { }
+            boolean big = layout == R.layout.widget_big;
+            try { v.setImageViewBitmap(R.id.w_chart, chartBitmap(new JSONArray(p.getString("hist", "[]")), cfg, big ? 6 : 3, big ? 720 : 420)); } catch (Exception ignored) { }
+        }
+        if (layout == R.layout.widget_big) {
             v.setOnClickPendingIntent(R.id.w_b_comida, open(c, "comida", 11));
             v.setOnClickPendingIntent(R.id.w_b_lenta, open(c, "lenta", 12));
             v.setOnClickPendingIntent(R.id.w_b_bajo, open(c, "bajo", 13));
@@ -101,11 +106,11 @@ public class GlucoseWidget extends AppWidgetProvider {
     }
 
     /* Gráfica de las últimas 6 horas, con la franja de tu rango. */
-    static Bitmap chartBitmap(JSONArray hist, JSONObject cfg) throws Exception {
-        int W = 720, Hh = 220, pad = 8;
+    static Bitmap chartBitmap(JSONArray hist, JSONObject cfg, int hours, int W) throws Exception {
+        int Hh = 220, pad = 8;
         Bitmap b = Bitmap.createBitmap(W, Hh, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
-        long now = System.currentTimeMillis(), t0 = now - 6 * H;
+        long now = System.currentTimeMillis(), t0 = now - hours * H;
         float lo = cfg.optInt("lo", 70), hi = cfg.optInt("hi", 180), vmin = 40, vmax = 300;
         float yHi = y(hi, vmin, vmax, Hh, pad), yLo = y(lo, vmin, vmax, Hh, pad);
         Paint bandFill = new Paint(); bandFill.setColor(0x447ACC6C);
@@ -119,7 +124,7 @@ public class GlucoseWidget extends AppWidgetProvider {
             JSONArray pt = hist.getJSONArray(i);
             long t = pt.getLong(0); if (t < t0) continue;
             int g = pt.getInt(1);
-            float x = (float) (t - t0) / (6 * H) * (W - 2 * pad) + pad, yy = y(g, vmin, vmax, Hh, pad);
+            float x = (float) (t - t0) / (hours * H) * (W - 2 * pad) + pad, yy = y(g, vmin, vmax, Hh, pad);
             if (first) { path.moveTo(x, yy); first = false; } else path.lineTo(x, yy);
             lx = x; ly = yy; lv = g;
         }
@@ -129,7 +134,7 @@ public class GlucoseWidget extends AppWidgetProvider {
             cv.drawCircle(lx, ly, 10, dot);
         } else {
             Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG); tp.setColor(0xFFA4ADBB); tp.setTextSize(30); tp.setTextAlign(Paint.Align.CENTER);
-            cv.drawText("Activa la lectura con la app cerrada", W / 2f, Hh / 2f, tp);
+            cv.drawText(W > 500 ? "Activa la lectura con la app cerrada" : "Sin datos", W / 2f, Hh / 2f, tp);
         }
         return b;
     }

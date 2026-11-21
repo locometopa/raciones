@@ -411,7 +411,7 @@ async function v011() {
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // Lo leído con la app cerrada entra en el historial; y se manda la config a la parte nativa
   assert.ok(st.hist.some((p) => p[1] === 160)); assert.strictEqual(st.now.v, '160');
-  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true);
+  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true && set[1].persist === false);
   // Sensor a punto de acabar: aviso en Ahora y avisos programados
   assert.ok(vt().includes('Sensor')); assert.ok(sched.some((n) => n.id === 7301));
   // Comida grasa detectada sola + aviso a las 3 h
@@ -429,6 +429,8 @@ async function v011() {
   // Ajustes: material y segundo plano
   k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('Con la app cerrada'));
   k(q('[data-act="kitnew"][data-v="rapidT"]')); k(q('[data-act="yes"]')); assert.ok(st.kit.rapidT > 0); await tick(); assert.ok(sched.some((n) => n.id === 7310));
+  const ps = q('[data-s="bg.persist"]'); ps.value = '1'; ps.dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
+  assert.ok(calls.filter((c) => c[0] === 'set').pop()[1].persist === true); assert.ok(vt().includes('LockStar'));
   k(q('[data-act="bgtest"]')); await tick(); assert.ok(calls.some((c) => c[0] === 'run'));
   // Ajustes plegados: se abren y recuerdan
   assert.ok(q('details.sec')); assert.ok(!q('details.sec[open]'));

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.13.0';
+  var VERSION = '0.14.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -39,7 +39,7 @@
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
       kit: { sensorT: 0, sensorDays: '14', rapidT: 0, basalT: 0 },
-      bg: { on: '0', missed: '1', low: '0' },
+      bg: { on: '0', missed: '1', low: '0', persist: '0' },
       coach: { used: [], unlocked: [], tipDate: '', tipId: '', ach: [], reportShared: 0, newTip: 0 },
       meal: { items: [], slot: '' }
     };
@@ -1040,7 +1040,7 @@
   function lastRapidT() { var l = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0]; return l ? l.t : 0; }
   async function nativeSync() {
     var nb = nativeBg(); if (!nb) return;
-    var cfg = { on: S.bg.on === '1' && libreOn(), missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
+    var cfg = { on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
     var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
@@ -1074,9 +1074,14 @@
       sel('Leer el Libre con la app cerrada', 'bg.on', [['0', 'No'], ['1', 'Sí']]) +
       sel('Avisar si parece que se te olvidó la rápida', 'bg.missed', [['1', 'Sí (sube mucho y no hay dosis apuntada)'], ['0', 'No']]) +
       sel('Avisar si bajas de tu límite de hipo', 'bg.low', [['0', 'No (ya avisa la app del Libre)'], ['1', 'Sí']]) +
+      sel('Glucosa fija en las notificaciones', 'bg.persist', [['0', 'No'], ['1', 'Sí: en la pantalla de bloqueo y con el número arriba']]) +
       (libreOn() ? '' : '<p class="fine">Necesita el Libre conectado (correo y contraseña arriba).</p>') +
       (native ? '<div class="row" style="margin-top:10px"><button data-act="bgtest">Probar ahora</button></div>' : '') +
-      '<details class="how"><summary>Poner el widget en la pantalla de inicio</summary><ol><li>Mantén pulsado un hueco vacío de la pantalla de inicio.</li><li>Toca <b>Widgets</b>.</li><li>Busca <b>iocrino</b> y arrastra «Glucosa» a la pantalla.</li></ol><p>Muestra la última glucosa, la flecha y la hora. Tócalo para abrir la app.</p></details>' +
+      '<details class="how"><summary>Poner el widget en la pantalla de inicio</summary><ol><li>Mantén pulsado un hueco vacío de la pantalla de inicio.</li><li>Toca <b>Widgets</b>.</li><li>Busca <b>iocrino</b> y arrastra «Glucosa» a la pantalla.</li></ol><p>Hay cinco: 1x1, 2x1, 2x1 con minigráfica, 1x2 vertical y 4x2 con gráfica y botones. Muestran la última glucosa, la flecha y la hora; tócalos para abrir la app.</p></details>' +
+      '<details class="how"><summary>Ver la glucosa con el móvil bloqueado (Samsung)</summary><p>Los widgets de la pantalla de bloqueo de Samsung («Añadir widgets») solo admiten apps de Samsung. Tienes dos caminos:</p><ol>' +
+      '<li><b>Glucosa fija</b> (arriba, «Sí»): sale como notificación en la pantalla de bloqueo y en la Always On Display, y con el número en la barra de estado. Se actualiza con cada lectura.</li>' +
+      '<li><b>Good Lock → LockStar</b> (gratis, de Samsung, en Galaxy Store): permite poner cualquier widget en la pantalla de bloqueo, también los de iocrino.</li></ol>' +
+      '<p>Para que la notificación se vea completa con el móvil bloqueado: Ajustes → Pantalla de bloqueo → Notificaciones → «Mostrar contenido».</p></details>' +
       '<details class="how"><summary>Si no lee con la app cerrada</summary><p>En Ajustes de Android → Aplicaciones → iocrino → Batería, elige <b>Sin restricciones</b>. En Samsung, quítala también de «Aplicaciones en suspensión».</p></details></section>';
   }
 
@@ -1250,6 +1255,7 @@
       save();
       if (/^cfg\.(basal|basalDose|basalTime|basalRemind)$/.test(t.dataset.s)) scheduleBasal();
       if (/^(bg\.|libre\.(email|password)|cfg\.(rangeLow|rangeHigh|hypo))/.test(t.dataset.s)) nativeSync();
+      if (t.dataset.s === 'bg.persist' && S.bg.persist === '1') { var np = notifPlugin(); if (np) np.requestPermissions().catch(function () {}); if (S.bg.on !== '1') toast('Activa también «Leer el Libre con la app cerrada» para que se actualice sola'); }
       if (t.dataset.s === 'kit.sensorDays') scheduleKit();
       if (t.dataset.s === 'ai.provider') { if (wzOpen) renderWz(); else { var y = window.scrollY; render(); window.scrollTo(0, y); } }
       return;

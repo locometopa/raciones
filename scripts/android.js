@@ -58,14 +58,14 @@ public class MainActivity extends BridgeActivity {
 }
 `);
 xml = fs.readFileSync(mf, 'utf8');
-if (!xml.includes('GlucoseWidgetBig')) {
+if (!xml.includes('GlucoseWidgetWide')) {
   const rcv = (cls, label, info) => `    <receiver android:name=".${cls}" android:exported="false" android:label="@string/${label}">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/${info}" />
         </receiver>
 `;
   xml = xml.replace('</application>', rcv('GlucoseWidget', 'widget_label', 'widget_glucose_info') + rcv('GlucoseWidgetSmall', 'widget_label_small', 'widget_small_info') +
-    rcv('GlucoseWidgetTall', 'widget_label_tall', 'widget_tall_info') + rcv('GlucoseWidgetBig', 'widget_label_big', 'widget_big_info') + '    </application>');
+    rcv('GlucoseWidgetTall', 'widget_label_tall', 'widget_tall_info') + rcv('GlucoseWidgetBig', 'widget_label_big', 'widget_big_info') + rcv('GlucoseWidgetWide', 'widget_label_wide', 'widget_wide_info') + '    </application>');
   // Atajos al mantener pulsado el icono
   xml = xml.replace(/(<activity[^>]*\.MainActivity"[\s\S]*?<\/intent-filter>)/, '$1\n            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />');
   if (!xml.includes('android.app.shortcuts')) throw new Error('No se pudieron añadir los atajos');
