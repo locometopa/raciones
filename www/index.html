@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Raciones</title>
+<style>
+:root{--bg:#f3f5f4;--card:#fff;--ink:#17201e;--mut:#5d6b68;--line:#dfe5e3;--acc:#0f766e;--acc-ink:#fff;--soft:#e3f1ef;--warn:#9a5b00;--warn-bg:#fff4dc;--bad:#a4262c;--bad-bg:#fde7e9}
+@media (prefers-color-scheme:dark){:root{--bg:#101615;--card:#1a2321;--ink:#e8eeec;--mut:#9aa8a5;--line:#2c3836;--acc:#2bb3a6;--acc-ink:#06201d;--soft:#1f3431;--warn:#f2c069;--warn-bg:#3a2e12;--bad:#ff9aa0;--bad-bg:#41191c}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+header{position:sticky;top:0;z-index:5;background:var(--acc);color:var(--acc-ink);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:baseline;gap:10px}
+header h1{font-size:19px;margin:0;font-weight:650}
+header span{font-size:12px;opacity:.8}
+main{max-width:640px;margin:0 auto;padding:12px 12px calc(84px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 10px;font-weight:650}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+input,select,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
+input.n{width:86px;text-align:right;font-variant-numeric:tabular-nums}
+input.big{font-size:26px;font-weight:650;width:120px;text-align:center}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer}
+button.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:650}
+button.ghost{border-color:transparent;color:var(--acc);padding:10px 8px}
+button.x{border:none;background:none;color:var(--mut);min-width:40px;padding:6px;font-size:18px}
+button:disabled{opacity:.5}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border-radius:999px;padding:8px 14px;min-height:40px}
+.chip.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.item{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:none}
+.item .nm{flex:1;min-width:0}
+.item .nm b{display:block;font-weight:550;overflow-wrap:anywhere}
+.item .nm small,.mut{color:var(--mut);font-size:13px}
+.hc{font-variant-numeric:tabular-nums;min-width:58px;text-align:right;font-weight:600}
+.tot{display:flex;justify-content:space-between;align-items:baseline;font-size:17px}
+.tot b{font-size:24px}
+table.bk{width:100%;border-collapse:collapse;margin:10px 0}
+table.bk td{padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+table.bk td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+table.bk small{color:var(--mut);display:block}
+.dose{background:var(--soft);border-radius:12px;padding:12px;text-align:center;margin:8px 0}
+.dose b{font-size:38px;line-height:1.1;display:block}
+.note{border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}
+.note.warn{background:var(--warn-bg);color:var(--warn)}
+.note.bad{background:var(--bad-bg);color:var(--bad);font-weight:550}
+.note.info{background:var(--soft)}
+.fine{font-size:12px;color:var(--mut);margin-top:10px}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav button{flex:1;border:none;border-radius:0;background:none;color:var(--mut);padding:10px 4px;font-size:13px;min-height:58px}
+nav button.on{color:var(--acc);font-weight:650;box-shadow:inset 0 3px 0 var(--acc)}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);padding:16px;width:min(560px,94vw);max-height:88vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog h3{margin:0 0 10px;font-size:18px}
+.list{max-height:46vh;overflow:auto;margin:10px -4px 0}
+.list button{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-top:1px solid var(--line);border-radius:0;background:none}
+.list button span:last-child{color:var(--mut);white-space:nowrap}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+video{width:100%;border-radius:12px;background:#000;max-height:40vh}
+#toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw;text-align:center}
+#toast.on{opacity:1}
+.day{font-size:13px;color:var(--mut);margin:14px 4px 6px;font-weight:650}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+</head>
+<body>
+<header><h1>Raciones</h1><span>v0.2</span></header>
+<main id="view"></main>
+<nav id="nav">
+  <button data-tab="comida">Comida</button>
+  <button data-tab="platos">Mis platos</button>
+  <button data-tab="historial">Historial</button>
+  <button data-tab="ajustes">Ajustes</button>
+</nav>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status"></div>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="gal" accept="image/*" hidden>
+<script src="js/calc.js"></script>
+<script src="js/foods.js"></script>
+<script src="js/libre.js"></script>
+<script src="js/vision.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
