@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_desc">Tu última glucosa del Libre, con flecha y hora</string>
+    <string name="widget_desc_big">Glucosa, gráfica de 6 horas y botones rápidos</string>
     <string name="widget_label">Glucosa</string>
+    <string name="widget_label_small">Glucosa (pequeño)</string>
+    <string name="widget_label_tall">Glucosa (vertical)</string>
+    <string name="widget_label_big">Glucosa y gráfica</string>
+    <string name="sc_comida">Calcular comida</string>
+    <string name="sc_lenta">Apuntar lenta</string>
+    <string name="sc_bajo">Estoy bajo</string>
 </resources>

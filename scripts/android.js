@@ -38,6 +38,7 @@ const pkgDir = path.join(root, 'android/app/src/main/java/es/locometopa/raciones
 for (const f of fs.readdirSync(path.join(root, 'resources/android/java'))) fs.copyFileSync(path.join(root, 'resources/android/java', f), path.join(pkgDir, f));
 fs.writeFileSync(path.join(pkgDir, 'MainActivity.java'), `package es.locometopa.raciones;
 
+import android.content.Intent;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
@@ -45,17 +46,29 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(IocrinoPlugin.class);
+        IocrinoPlugin.takeIntent(this, getIntent());
         super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        IocrinoPlugin.takeIntent(this, intent);
+        super.onNewIntent(intent);
     }
 }
 `);
 xml = fs.readFileSync(mf, 'utf8');
-if (!xml.includes('GlucoseWidget')) {
-  xml = xml.replace('</application>', `    <receiver android:name=".GlucoseWidget" android:exported="false" android:label="@string/widget_label">
+if (!xml.includes('GlucoseWidgetBig')) {
+  const rcv = (cls, label, info) => `    <receiver android:name=".${cls}" android:exported="false" android:label="@string/${label}">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_glucose_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/${info}" />
         </receiver>
-    </application>`);
+`;
+  xml = xml.replace('</application>', rcv('GlucoseWidget', 'widget_label', 'widget_glucose_info') + rcv('GlucoseWidgetSmall', 'widget_label_small', 'widget_small_info') +
+    rcv('GlucoseWidgetTall', 'widget_label_tall', 'widget_tall_info') + rcv('GlucoseWidgetBig', 'widget_label_big', 'widget_big_info') + '    </application>');
+  // Atajos al mantener pulsado el icono
+  xml = xml.replace(/(<activity[^>]*\.MainActivity"[\s\S]*?<\/intent-filter>)/, '$1\n            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />');
+  if (!xml.includes('android.app.shortcuts')) throw new Error('No se pudieron añadir los atajos');
   if (!xml.includes('POST_NOTIFICATIONS')) xml = xml.replace('<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />');
   fs.writeFileSync(mf, xml);
 }

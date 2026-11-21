@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.11.0';
+  var VERSION = '0.12.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -14,6 +14,8 @@
     pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
     camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
+    run: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="4.5" r="2"/><path d="M7 21l3-6 3 2v5M10 15l1-6 4 3 3 1M11 9l-3 1-2 3"/></svg>',
+    pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4l5 5-9 9H6v-5zM4 20h4"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
   };
   var native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
@@ -145,13 +147,15 @@
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
-    h += coachHTML(x);
     var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
     h += hipoCardHTML();
-    if (!S.hipoCheck) h += '<button class="lowbtn' + (lowish ? ' hot' : '') + '" data-act="hipo">Estoy bajo</button>';
+    if (!S.hipoCheck && lowish) h += '<button class="lowbtn hot" data-act="hipo">Estoy bajo</button>';
     var md = missedDose();
     if (md) h += '<div class="note warn"><b>¿Te has pinchado?</b> Tu glucosa ha subido ' + fmt(md.rise, 0) + ' mg/dL en las últimas 2 horas y no hay ' + esc(rapidName()) + ' apuntada.<div class="row"><button class="pri" data-act="goto" data-v="comida">He comido: calcular</button><button data-act="dose">Ya me la puse</button><button class="ghost" data-act="missedoff">No, ignorar</button></div></div>';
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
+    h += kitDueHTML();
+    if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
+    h += coachHTML(x);
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
@@ -161,7 +165,8 @@
       marks: S.log.filter(function (e) { return e.ins !== 'hipo' && e.ins !== 'ejercicio'; }).map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
       low: num(S.cfg.rangeLow) || 70, high: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250, cls: x.cls
     }) + '</section>';
-
+    h += '<button class="pri big" data-act="goto" data-v="comida">' + (S.meal.items.length ? 'Seguir con la comida (' + S.meal.items.length + ')' : 'Calcular comida') + '</button>';
+    if (!S.hipoCheck && !lowish) h += '<button class="lowbtn" data-act="hipo">Estoy bajo</button>';
     var last = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
     var lastB = S.log.filter(function (e) { return e.ins === 'basal'; }).sort(function (a, b) { return b.t - a.t; })[0];
     h += '<section class="card"><div class="kv"><span>' + esc(S.cfg.rapid && S.cfg.rapid !== 'Otra' ? S.cfg.rapid + ' activa' : 'Insulina activa') + '</span><b>' + (num(S.cfg.dia) > 0 ? fu(activeInsulin()) : '—') + '</b></div>' +
@@ -169,10 +174,7 @@
       (hasBasal() ? '<div class="kv basalrow' + (basalDoneToday() ? ' hecha' : '') + '"><span>' + esc(basalName()) + ' (lenta)<small>' + (lastB ? fu(lastB.u) + ' · ' + agoText(lastB.t) : 'sin apuntar') + (num(S.cfg.basalDose) > 0 && S.cfg.basalTime ? ' · aviso a las ' + esc(S.cfg.basalTime) : '') + '</small></span>' +
         (basalDoneToday() ? '<span class="ok">✓ hoy</span>' : '<button class="chip mini' + (num(S.cfg.basalDose) > 0 ? ' pri' : '') + '" data-act="' + (num(S.cfg.basalDose) > 0 ? 'basalquick' : 'basal') + '">Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : '') + '</button>') + '</div>' : '') +
       (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina en Ajustes para ver la insulina activa.</p>') + '</section>';
-    h += kitDueHTML();
-    if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
-    h += '<div class="row" style="justify-content:center"><button class="ghost" data-act="guide">¿Cómo funciona todo esto? Guía fácil</button></div>';
-    h += '<button class="pri big" data-act="goto" data-v="comida">' + (S.meal.items.length ? 'Seguir con la comida (' + S.meal.items.length + ')' : 'Calcular comida') + '</button>';
+    h += tipHTML();
     view.innerHTML = h;
   }
 
@@ -253,7 +255,7 @@
       else if (r.hasGlucose && (tr === 4 || tr === 5)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta.</div>';
       if (r.hasGlucose && S.now.t && Date.now() - S.now.t > STALE_MS) h += '<div class="note warn">La glucosa es de hace ' + Math.round((Date.now() - S.now.t) / 60000) + ' min. Vuelve a medirla antes de decidir.</div>';
     }
-    h += '<div class="row" style="margin-top:10px"><button class="pri" data-act="log">Registrar</button><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar</button></div>';
+    h += '<button class="pri big" data-act="log" style="margin-top:12px">Registrar lo que me pongo</button><div class="row" style="justify-content:space-between"><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar plato</button></div>';
     h += '<details class="how"><summary>¿Cómo se calcula?</summary><ol>' +
       '<li><b>Hidratos</b>: gramos de cada alimento × sus hidratos por 100 g ÷ 100. Una ración son 10 g de hidratos.</li>' +
       '<li><b>Comida</b>: ' + (S.cfg.ratioMode === 'r' ? 'raciones × tu ratio de la franja (unidades por ración)' : 'hidratos ÷ los gramos que cubre 1 unidad en esa franja') + '.</li>' +
@@ -423,14 +425,22 @@
   }
 
   // ---------- vista: registro ----------
+  var logSeg = 'diario', logDays = 7;
+  function segHTML() { return '<div class="seg"><button class="' + (logSeg === 'diario' ? 'on' : '') + '" data-act="logseg" data-v="diario">Diario</button><button class="' + (logSeg === 'analisis' ? 'on' : '') + '" data-act="logseg" data-v="analisis">Análisis</button></div>'; }
+  function vAnalysis() {
+    var h = segHTML();
+    h += '<button class="pri big" data-act="report">Informe para el endocrino</button>';
+    h += advisorHTML() + learnHTML();
+    if (S.log.length) h += '<div class="row"><button data-act="csv">Copiar registro (CSV)</button><button data-act="repcsv">Compartir CSV</button></div>';
+    view.innerHTML = h;
+  }
   function vLog() {
-    var h = '<section class="card"><div class="kv"><span>Insulina activa ahora</span><b>' + (num(S.cfg.dia) > 0 ? fu(activeInsulin()) : '—') + '</b></div>' +
-      (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina rápida en Ajustes para calcularla.</p>') + '</section>';
+    if (logSeg === 'analisis') return vAnalysis();
+    var h = segHTML() + '<div class="ways3"><button data-act="dose">' + ICON.pencil + 'Dosis suelta</button><button data-act="exercise">' + ICON.run + 'Ejercicio</button>' + (hasBasal() ? '<button data-act="basal">' + ICON.pen + 'Lenta</button>' : '') + '</div>';
     if (!S.log.length) h += '<section class="card"><p class="mut">Cuando registres una comida o una dosis aparecerá aquí.</p></section>';
-    h += '<div class="row" style="margin-bottom:4px"><button class="pri" data-act="report">Informe para el endocrino</button><button data-act="dose">Apuntar dosis suelta</button><button data-act="exercise">Apuntar ejercicio</button>' + (S.log.length ? '<button data-act="csv">Copiar CSV</button>' : '') + '</div>';
-    var lastDay = '';
-    h = advisorHTML() + learnHTML() + h;
-    S.log.slice().sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
+    var lastDay = '', cutDay = new Date(); cutDay.setHours(0, 0, 0, 0); cutDay = cutDay.getTime() - (logDays - 1) * 864e5;
+    var more = S.log.some(function (e) { return e.t < cutDay; });
+    S.log.filter(function (e) { return e.t >= cutDay; }).sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
       var d = new Date(e.t), day = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       if (day !== lastDay) { h += '<div class="day">' + esc(day) + '</div>'; lastDay = day; }
       if (e.ins === 'ejercicio') {
@@ -449,11 +459,13 @@
         h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · Lenta</b><small>' + esc(e.name || 'insulina lenta') + '</small></div><span class="hc lenta">' + fu(e.u || 0) + '</span><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
         return;
       }
-      var post = e.post && !e.post.none ? 'a las 3 h: ' + fmt(e.post.g3, 0) + ' mg/dL' + (e.post.min < (num(S.cfg.hypo) || 70) ? ' (bajó a ' + fmt(e.post.min, 0) + ')' : '') : '';
+      var pg = e.post && !e.post.none ? (e.post.g3 != null ? ['3', e.post.g3] : e.post.g2 != null ? ['2', e.post.g2] : null) : null;
+      var post = pg ? 'a las ' + pg[0] + ' h: ' + fmt(pg[1], 0) + ' mg/dL' + (e.post.min != null && e.post.min < (num(S.cfg.hypo) || 70) ? ' (bajó a ' + fmt(e.post.min, 0) + ')' : '') : '';
       h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · ' + esc(slotName(e.slot)) + '</b><small>' +
         fmt(e.carbs || 0, 1) + ' g HC' + (e.glucose != null ? ' · ' + fmt(e.glucose, 0) + ' mg/dL ' + (TREND[e.trend] ? TREND[e.trend][0] : '') : '') + (e.sug != null ? ' · sugerido ' + fu(e.sug) : '') +
         (e.items ? '<br>' + esc(e.items) : '') + (post ? '<br><span class="estm">' + post + '</span>' : '') + '</small></div><span class="hc">' + fu(e.u || 0) + '</span><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
     });
+    if (more) h += '<button class="big" data-act="logmore">Ver 7 días más</button>';
     view.innerHTML = h;
   }
   function learnHTML() {
@@ -479,8 +491,15 @@
   // ---------- vista: ajustes ----------
   function field(label, path, attrs) { return '<label>' + label + '</label><input data-s="' + path + '" value="' + esc(getPath(path)) + '" ' + (attrs === undefined ? 'inputmode="decimal"' : attrs) + '>'; }
   function sel(label, path, opts) { var v = String(getPath(path)); return '<label>' + label + '</label><select data-s="' + path + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; }
+  /* Ajustes en bloques plegables; se recuerda cuáles tienes abiertos. */
+  var openSecs = {};
+  function collapse(h) {
+    var n = 0;
+    return h.replace(/<section class="card"><h2>([^<]*)<\/h2>/g, function (m0, t) { var id = 's' + (n++); return '<details class="card sec" data-sec="' + id + '"' + (openSecs[id] ? ' open' : '') + '><summary>' + t + '</summary>'; })
+      .replace(/<\/section>/g, '</details>');
+  }
   function vSettings() {
-    var h = '<button class="pri big" data-act="wizard">Asistente de configuración</button><button class="big" data-act="guide">Guía fácil: qué es cada cosa</button>' +
+    var h = '<button class="pri big" data-act="wizard">Asistente de configuración</button>' +
       '<section class="card"><h2>Tus insulinas</h2>' + sel('Rápida (comidas)', 'cfg.rapid', [['', '—']].concat(RAPIDS.map(function (x) { return [x, x]; }))) + sel('Lenta', 'cfg.basal', [['', '—']].concat(BASALS.map(function (x) { return [x, x]; }))) +
       (hasBasal() ? '<div class="grid2"><div>' + field('Dosis fija de lenta (U)', 'cfg.basalDose') + '</div><div>' + field('Hora a la que te la pones', 'cfg.basalTime', 'type="time"') + '</div></div>' +
         sel('Aviso diario si no la has apuntado', 'cfg.basalRemind', [['1', 'Sí, avisarme a esa hora'], ['0', 'No']]) +
@@ -496,9 +515,6 @@
       field('Dosis máxima por inyección (tope de seguridad, opcional)', 'cfg.maxBolus') +
       field('Por debajo de esta glucosa no sugerir dosis (mg/dL) · línea roja', 'cfg.hypo') +
       sel('Tener en cuenta la flecha del sensor', 'cfg.useTrend', [['0', 'No, solo avisar'], ['1', 'Sí: ±50 / 75 / 100 mg/dL (regla del documento de la Dra. Barrio)']]) + '</section>';
-    h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
-      '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
-      field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
     h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. La app LibreLinkUp solo hace falta para crear esa cuenta y aceptar la invitación; después puedes desinstalarla y, si Abbott pide aceptar condiciones nuevas, iocrino te deja hacerlo desde aquí. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
       field('Correo de la cuenta LibreLinkUp', 'libre.email', 'type="email" autocomplete="off"') +
       field('Contraseña', 'libre.password', 'type="password" autocomplete="off"') +
@@ -518,9 +534,12 @@
       '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
+    h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
+      '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
+      field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
     h += backupHTML();
     h += '<p class="fine" style="padding:0 6px">iocrino ' + VERSION + ' · Ayuda de cálculo personal, no un producto sanitario. Los valores de la tabla de alimentos son aproximados; manda la etiqueta.</p>';
-    view.innerHTML = h;
+    view.innerHTML = collapse(h);
   }
 
   // ---------- historial de glucosa (para el informe y los avisos) ----------
@@ -1017,7 +1036,8 @@
     var cfg = { on: S.bg.on === '1' && libreOn(), missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
-    try { await nb.setData({ json: JSON.stringify(cfg), last: last ? JSON.stringify(last) : '' }); } catch (e) { /* versión sin parte nativa */ }
+    var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
+    try { await nb.setData({ json: JSON.stringify(cfg), last: last ? JSON.stringify(last) : '', hist: JSON.stringify(h6) }); } catch (e) { /* versión sin parte nativa */ }
   }
   /* Recoge lo que se leyó con la app cerrada. */
   async function nativePull() {
@@ -1027,7 +1047,15 @@
       if (h.length) { addHist(h); var l = h[h.length - 1]; if (!S.now.t || l[0] > S.now.t) S.now = { v: String(l[1]), trend: +r.trend || 0, t: l[0], src: 'libre' }; }
       if (ss && ss.token && (!S.libre.session || ss.token !== S.libre.session.token)) S.libre.session = ss;
       save();
+      if (r.action) doAction(r.action);
     } catch (e) { /* nada */ }
+  }
+  /* Botones del widget grande y atajos del icono. */
+  function doAction(a) {
+    closeDlg();
+    if (a === 'comida') { tab = 'comida'; render(); window.scrollTo(0, 0); }
+    else if (a === 'lenta') { tab = 'ahora'; render(); if (basalDoneToday()) toast(basalName() + ' ya está apuntada hoy'); else quickBasalAsk(); }
+    else if (a === 'bajo') { tab = 'ahora'; render(); hipoWhat = ''; dlgHipo(); }
   }
   async function bgTest() {
     var nb = nativeBg(); if (!nb) { toast('Solo en la app instalada'); return; }
@@ -1089,9 +1117,12 @@
   function ateRecently() { return S.log.some(function (e) { return e.carbs > 0 && Date.now() - e.t < 2 * 3600e3; }); }
   function coachMsg(x) { return Coach.message({ g: x.g.v, trend: +S.now.trend || 0, old: x.old, stats: coachStats(), ateRecently: ateRecently(), now: Date.now() }); }
   function coachHTML(x) {
-    var m = coachMsg(x), t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
-    return '<div class="coach ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>' +
-      (t ? '<button class="tipline" data-act="goto" data-v="aprende"><span class="tk">' + (S.coach.newTip ? 'Nuevo · ' : '') + esc(t.k) + ' del día</span><span class="tx">' + esc(t.x) + '</span></button>' : '');
+    var m = coachMsg(x);
+    return '<div class="coach ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>';
+  }
+  function tipHTML() {
+    var t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
+    return t ? '<button class="tipline" data-act="goto" data-v="aprende"><span class="tk">' + (S.coach.newTip ? 'Nuevo · ' : '') + esc(t.k) + ' del día</span><span class="tx">' + esc(t.x) + '</span></button>' : '';
   }
   var WATCH = '<details class="how"><summary>Ver la glucosa en tu Galaxy Watch</summary><p>iocrino no puede pintar en la esfera del reloj, pero hay una app gratuita que lo hace muy bien leyendo de LibreLinkUp: <b>GlucoDataHandler</b>.</p><ol>' +
     '<li>En el móvil, instala <b>GlucoDataHandler</b> desde Google Play.</li>' +
@@ -1110,6 +1141,7 @@
       (st.streak ? '<p class="fine">Racha: ' + st.streak + (st.streak === 1 ? ' día' : ' días') + ' seguidos por encima del 70 %.</p>' : '') + '</section>';
     var t = S.coach.tipId ? Coach.tip(S.coach.tipId) : null;
     if (t) h += '<section class="card"><h2>' + esc(t.k) + ' del día</h2><p style="margin:0;font-size:16px;line-height:1.5">' + esc(t.x) + '</p><p class="fine">Cada día que abres iocrino se desbloquea uno nuevo. Llevas ' + S.coach.unlocked.length + ' de ' + Coach.TIPS.length + '.</p></section>';
+    h += '<button class="big" data-act="guide">Guía fácil: cómo funciona todo esto</button>';
     h += '<section class="card"><h2>Infografías</h2><div class="igl">' + Coach.infographics().map(function (g) { return '<button data-act="ig" data-v="' + g.id + '">' + esc(g.t) + '</button>'; }).join('') + '</div></section>';
     var tips = S.coach.unlocked.map(Coach.tip).filter(Boolean).reverse();
     h += '<section class="card"><h2>Trucos y curiosidades · ' + tips.length + ' de ' + Coach.TIPS.length + '</h2>' +
@@ -1236,6 +1268,8 @@
       }
       case 'guide': dlgGuide(); break;
       case 'ig': dlgIg(b.dataset.v); break;
+      case 'logseg': logSeg = b.dataset.v; render(); window.scrollTo(0, 0); break;
+      case 'logmore': logDays += 7; render(); break;
       case 'fat': S.meal.fat = S.meal.fat === '1' ? '0' : '1'; save(); renderRes(); break;
       case 'kitnew': { var kk = b.dataset.v; confirmDlg(KIT_Q[kk], function () { S.kit[kk] = Date.now(); save(); scheduleKit(); render(); toast('Apuntado'); }); break; }
       case 'exercise': dlgExercise(); break;
@@ -1320,6 +1354,7 @@
     }
   });
 
+  document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.dataset && d.dataset.sec) openSecs[d.dataset.sec] = d.open; }, true);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target && e.target.id === 'gi') { e.preventDefault(); var b = $('[data-act="gsave"]'); if (b) b.click(); }
   });
@@ -1349,5 +1384,5 @@
     rd.readAsText(f);
   });
   autoLibre();
-  window.__raciones = { state: function () { return S; }, missedDose: missedDose, nasBackup: nasBackup, addHist: addHist, showEstimate: showEstimate, version: VERSION, render: render, coachDaily: coachDaily, checkAch: checkAch };
+  window.__raciones = { state: function () { return S; }, missedDose: missedDose, nasBackup: nasBackup, addHist: addHist, showEstimate: showEstimate, version: VERSION, render: render, doAction: function (a) { doAction(a); }, coachDaily: coachDaily, checkAch: checkAch };
 })();

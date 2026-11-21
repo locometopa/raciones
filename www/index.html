@@ -36,7 +36,7 @@ button:disabled{opacity:.5}
 .chip{border-radius:999px;padding:8px 16px;min-height:42px}
 .chip.on{background:var(--ink);color:var(--bg);font-weight:650}
 .chips.slots{margin:0 0 12px;flex-wrap:nowrap}
-.chips.slots .chip{flex:1;padding:8px 4px;min-width:0}
+.chips.slots .chip{flex:1;padding:8px 2px;min-width:0;font-size:15px;letter-spacing:-.01em}
 #gtr{flex-wrap:nowrap}
 #gtr .chip{flex:1;padding:8px 0;min-width:0;font-size:20px}
 .lab{font-size:13px;color:var(--mut);margin:14px 0 6px}
@@ -195,6 +195,19 @@ video{width:100%;border-radius:12px;background:#000;max-height:40vh}
 .ach .am{font-size:20px;display:block}
 .ach b{display:block;font-size:14px}.ach small{color:var(--mut);font-size:12px}
 nav button{font-size:12px}
+.seg{display:flex;background:var(--card);border-radius:14px;padding:4px;margin-bottom:12px}
+.seg button{flex:1;background:none;min-height:40px;border-radius:10px;color:var(--mut);font-weight:600}
+.seg button.on{background:var(--card2);color:var(--ink)}
+.ways3{display:flex;gap:8px;margin-bottom:12px}
+.ways3 button{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:13px;padding:10px 4px;min-height:64px}
+.ways3 svg{width:24px;height:24px;color:var(--acc)}
+details.sec{padding:0}
+details.sec>summary{list-style:none;cursor:pointer;padding:16px;font-size:16px;font-weight:650;display:flex;justify-content:space-between;align-items:center}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:"›";color:var(--mut);font-size:22px;transition:transform .15s}
+details.sec[open]>summary::after{transform:rotate(90deg)}
+details.sec[open]{padding:0 16px 16px}
+details.sec[open]>summary{padding:16px 0 6px}
 </style>
 </head>
 <body>

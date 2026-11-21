@@ -158,7 +158,9 @@ click(act('useplate')); assert.strictEqual(S().meal.items.length, 2);
 
 // Registro
 click($('[data-tab="registro"]')); assert.ok(text().includes('12 U')); assert.ok($('#sum').hidden);
-assert.ok(text().includes('Aprendizaje')); assert.ok(text().includes('Lenta')); assert.ok($('.hc.lenta'));
+assert.ok(text().includes('Lenta')); assert.ok($('.hc.lenta'));
+click($('[data-act="logseg"][data-v="analisis"]')); assert.ok(text().includes('Aprendizaje')); assert.ok(act('report'));
+click($('[data-act="logseg"][data-v="diario"]'));
 
 // Foto con IA: desactivada de serie
 click($('[data-tab="comida"]')); assert.ok(!act('photo'));
@@ -229,8 +231,8 @@ w.close();
   const q = (sel) => d.querySelector(sel), vt = () => q('#view').textContent;
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   assert.ok(!q('#dlg').textContent.includes('Vamos'), 'ya configurado: sin asistente');
-  // Guía desde Ahora
-  k(q('[data-act="guide"]')); assert.ok(q('#dlg').textContent.includes('Guía fácil')); assert.ok(q('#dlg').textContent.includes('regla del 1700')); assert.ok(q('#dlg').textContent.includes('Fiasp')); k(q('[data-act="close"]'));
+  // Guía desde Aprende
+  k(q('[data-tab="aprende"]')); k(q('[data-act="guide"]')); assert.ok(q('#dlg').textContent.includes('Guía fácil')); assert.ok(q('#dlg').textContent.includes('regla del 1700')); assert.ok(q('#dlg').textContent.includes('Fiasp')); k(q('[data-act="close"]'));
   // Ejemplo del PDF: 150 ↗ (+50), objetivo 100, FC 40, 30 g, 1 U/ración, ~1 U activa → 4,5 U
   k(q('[data-tab="comida"]'));
   assert.ok(q('.dose b').textContent.startsWith('4,5'), 'ejemplo del PDF: ' + q('.dose b').textContent);
@@ -239,7 +241,7 @@ w.close();
   w.__raciones.state().cfg.useTrend = '0'; w.__raciones.render();
   assert.ok(q('.dose b').textContent.startsWith('3,5'), 'sin flecha: ' + q('.dose b').textContent);
   // Asesor: propone +10 % en la cena, se aplica con confirmación y se puede deshacer
-  k(q('[data-tab="registro"]'));
+  k(q('[data-tab="registro"]')); k(q('[data-act="logseg"][data-v="analisis"]'));
   assert.ok(vt().includes('Tus ratios')); assert.ok(vt().includes('un 10 % más de insulina'));
   assert.ok(vt().includes('Aprendiendo: 0 de 5'), 'la comida aún sin datos');
   k(q('[data-act="ratioapply"][data-slot="cena"]')); assert.ok(q('#dlg').textContent.includes('de 1 U/ración a 1,1 U/ración'));
@@ -339,7 +341,7 @@ async function v09() {
   assert.ok(vt().includes('Fiasp activa'));
   // Informe
   k(q('[data-tab="registro"]')); assert.ok(vt().includes('Bajada')); assert.ok(vt().includes('Comida sin apuntar'));
-  k(q('[data-act="report"]')); assert.ok(q('#dlg').textContent.includes('Informe para el endocrino')); assert.ok(q('#dlg').textContent.includes('En rango (70–180)'));
+  k(q('[data-act="logseg"][data-v="analisis"]')); k(q('[data-act="report"]')); assert.ok(q('#dlg').textContent.includes('Informe para el endocrino')); assert.ok(q('#dlg').textContent.includes('En rango (70–180)'));
   assert.ok(q('#dlg').textContent.includes('Bajadas apuntadas1'));
   k(q('[data-act="repdays"][data-v="7"]')); assert.ok(q('[data-act="repdays"][data-v="7"]').classList.contains('on'));
   k(q('[data-act="close"]'));
@@ -428,5 +430,19 @@ async function v011() {
   k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('Con la app cerrada'));
   k(q('[data-act="kitnew"][data-v="rapidT"]')); k(q('[data-act="yes"]')); assert.ok(st.kit.rapidT > 0); await tick(); assert.ok(sched.some((n) => n.id === 7310));
   k(q('[data-act="bgtest"]')); await tick(); assert.ok(calls.some((c) => c[0] === 'run'));
+  // Ajustes plegados: se abren y recuerdan
+  assert.ok(q('details.sec')); assert.ok(!q('details.sec[open]'));
+  const sec = q('details.sec[data-sec="s1"]'); sec.open = true; sec.dispatchEvent(new w.Event('toggle')); w.__raciones.render(); assert.ok(q('details.sec[data-sec="s1"]').open);
+  // Enviamos las últimas horas al widget
+  assert.ok(calls.filter((c) => c[0] === 'set').length >= 2);
+  // Botones del widget y atajos del icono
+  w.__raciones.doAction('comida'); assert.ok(q('[data-tab="comida"]').classList.contains('on'));
+  w.__raciones.doAction('bajo'); assert.ok(q('#dlg').textContent.includes('Estoy bajo')); k(q('[data-act="close"]'));
+  st.cfg.basalDose = '30'; w.__raciones.doAction('lenta'); assert.ok(q('#dlg').textContent.includes('Tresiba')); k(q('[data-act="yes"]'));
+  assert.ok(st.log.some((e) => e.ins === 'basal'));
+  // Registro: 7 días y «ver más»
+  for (let d = 1; d <= 12; d++) st.log.push({ t: t0 - d * D, ins: 'basal', u: 30, carbs: 0, name: 'Tresiba' });
+  k(q('[data-tab="registro"]')); assert.ok(q('[data-act="logmore"]')); const n1 = w.document.querySelectorAll('.day').length; k(q('[data-act="logmore"]'));
+  assert.ok(w.document.querySelectorAll('.day').length > n1);
   w.close();
 }
