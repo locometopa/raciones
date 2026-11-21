@@ -1,10 +1,12 @@
 (function () {
   'use strict';
-  var VERSION = '0.6.0';
+  var VERSION = '0.7.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
   var STALE_MS = 15 * 60000;
+  // Regla 50/75/100 (documento de la Dra. Barrio). Libre: ↗↘ 1–2 mg/dL/min, ↑↓ más de 2. Al bajar se usa 100 (lo prudente).
+  var TREND_ADJ = { 1: -100, 2: -50, 3: 0, 4: 50, 5: 75 };
   var RAPIDS = ['Fiasp', 'NovoRapid', 'Humalog', 'Lyumjev', 'Apidra', 'Otra'];
   var BASALS = ['Tresiba', 'Lantus', 'Toujeo', 'Levemir', 'Abasaglar', 'Otra', 'Ninguna'];
   var ICON = {
@@ -25,7 +27,7 @@
   // ---------- estado ----------
   function defaults() {
     return {
-      cfg: { ratioMode: 'r', ratios: { desayuno: '', comida: '', merienda: '', cena: '' }, isf: '', target: '', dia: '', iobMode: 'total', step: '1', maxBolus: '', hypo: '70', rangeLow: '70', rangeHigh: '180', alto: '250', rapid: '', basal: '', sameRatio: '1', ratioAll: '', setup: '' },
+      cfg: { ratioMode: 'r', ratios: { desayuno: '', comida: '', merienda: '', cena: '' }, isf: '', target: '', dia: '', iobMode: 'total', step: '1', maxBolus: '', hypo: '70', rangeLow: '70', rangeHigh: '180', alto: '250', rapid: '', basal: '', sameRatio: '1', ratioAll: '', setup: '', useTrend: '0', ratioLog: [] },
       libre: { email: '', password: '', version: Libre.DEFAULT_VERSION, session: null, graph: [] },
       ai: { on: '0', provider: 'claude', keys: {}, models: {}, url: '' },
       now: { v: '', trend: 0, t: null, src: '' },
@@ -122,7 +124,9 @@
     var slot = curSlot(), g = gNow();
     var carbs = Calc.mealCarbs(S.meal.items);
     var gpu = Calc.gramsPerUnit(S.cfg.ratioMode, S.cfg.ratios[slot]);
-    var r = Calc.bolus({ carbs: carbs, glucose: g.v, gPerU: gpu, isf: S.cfg.isf, target: S.cfg.target, iob: activeInsulin(), iobMode: S.cfg.iobMode, step: S.cfg.step, maxBolus: S.cfg.maxBolus, hypo: S.cfg.hypo });
+    var fresh = S.now.t && Date.now() - S.now.t <= STALE_MS;
+    var adj = S.cfg.useTrend === '1' && g.v !== null && fresh ? (TREND_ADJ[+S.now.trend] || 0) : 0;
+    var r = Calc.bolus({ carbs: carbs, glucose: g.v, trendAdj: adj, gPerU: gpu, isf: S.cfg.isf, target: S.cfg.target, iob: activeInsulin(), iobMode: S.cfg.iobMode, step: S.cfg.step, maxBolus: S.cfg.maxBolus, hypo: S.cfg.hypo });
     return { slot: slot, carbs: carbs, gpu: gpu, g: g, r: r };
   }
 
@@ -153,6 +157,7 @@
       (hasBasal() ? '<div class="kv basalrow"><span>' + esc(basalName()) + ' (lenta)<small>' + (lastB ? fu(lastB.u) + ' · ' + agoText(lastB.t) : 'sin apuntar') + '</small></span><button class="chip mini" data-act="basal">Apuntar</button></div>' : '') +
       (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina en Ajustes para ver la insulina activa.</p>') + '</section>';
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
+    h += '<div class="row" style="justify-content:center"><button class="ghost" data-act="guide">¿Cómo funciona todo esto? Guía fácil</button></div>';
     h += '<button class="pri big" data-act="goto" data-v="comida">' + (S.meal.items.length ? 'Seguir con la comida (' + S.meal.items.length + ')' : 'Calcular comida') + '</button>';
     view.innerHTML = h;
   }
@@ -217,16 +222,19 @@
     } else {
       h += '<table class="bk">' +
         '<tr><td>Comida<small>' + fmt(c.carbs, 1) + ' g ÷ ' + fmt(c.gpu, 1) + ' g por unidad</small></td><td>' + fu(r.food) + '</td></tr>' +
-        '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
+        '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + (r.trendAdj ? ' ' + (r.trendAdj > 0 ? '+' : '−') + ' ' + Math.abs(r.trendAdj) + ' por la flecha' : '') + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
         '<tr><td>Insulina activa<small>' + (num(S.cfg.dia) > 0 ? 'quedan ' + fu(r.iob) + ' de dosis registradas' : 'duración de la insulina sin configurar') + '</small></td><td>' + (r.iobUsed > 0 ? '−' + fu(r.iobUsed) : '—') + '</td></tr></table>';
       h += '<div class="dose"><span class="mut">Sugerencia</span><b>' + fu(r.total) + '</b><span class="mut">sin redondear: ' + fmt(r.raw, 2) + '</span></div>';
-      if (S.cfg.rapid === 'Fiasp') h += '<p class="fine">Fiasp, según su prospecto: desde 2 minutos antes de empezar a comer hasta 20 minutos después.</p>';
+      if (S.cfg.rapid === 'Fiasp') h += '<p class="fine">Fiasp: su prospecto permite pincharla desde 2 minutos antes de empezar a comer hasta 20 minutos después; el documento de la Dra. Barrio aconseja esperar 5–10 minutos entre el pinchazo y la comida.</p>';
+      var lastR = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
+      if (r.hasGlucose && r.corr > 0 && lastR && Date.now() - lastR.t < 2 * 3600e3) h += '<div class="note warn">Tu última dosis fue hace ' + Math.round((Date.now() - lastR.t) / 60000) + ' min. Se aconseja no poner corrección hasta pasadas 2 horas: lo que queda activo ya se descuenta, pero vigila.</div>';
       if (S.meal.items.some(function (x) { return x.est; })) h += '<div class="note warn">Hay cantidades estimadas por la IA. Revísalas antes de fiarte del resultado.</div>';
       if (r.capped) h += '<div class="note warn">El cálculo supera tu dosis máxima configurada (' + fu(num(S.cfg.maxBolus)) + '); se ha limitado a ese tope.</div>';
       if (!r.hasGlucose && !c.g.bad) h += '<div class="note warn">Sin glucosa: solo se ha calculado la parte de la comida.</div>';
       var tr = +S.now.trend;
-      if (r.hasGlucose && (tr === 1 || tr === 2)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta: valora poner menos según tus pautas.</div>';
-      if (r.hasGlucose && (tr === 4 || tr === 5)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta.</div>';
+      if (r.trendAdj) h += '<p class="fine">Se ha tenido en cuenta la flecha (' + TREND[tr][0] + '): la glucosa en 30 min sería unos ' + fmt(c.g.v + r.trendAdj, 0) + ' mg/dL.</p>';
+      else if (r.hasGlucose && (tr === 1 || tr === 2)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta: valora poner menos según tus pautas.</div>';
+      else if (r.hasGlucose && (tr === 4 || tr === 5)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta.</div>';
       if (r.hasGlucose && S.now.t && Date.now() - S.now.t > STALE_MS) h += '<div class="note warn">La glucosa es de hace ' + Math.round((Date.now() - S.now.t) / 60000) + ' min. Vuelve a medirla antes de decidir.</div>';
     }
     h += '<div class="row" style="margin-top:10px"><button class="pri" data-act="log">Registrar</button><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar</button></div>';
@@ -405,7 +413,7 @@
     if (!S.log.length) h += '<section class="card"><p class="mut">Cuando registres una comida o una dosis aparecerá aquí.</p></section>';
     else h += '<div class="row" style="margin-bottom:4px"><button data-act="csv">Copiar registro (CSV)</button></div>';
     var lastDay = '';
-    h = learnHTML() + h;
+    h = advisorHTML() + learnHTML() + h;
     S.log.slice().sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
       var d = new Date(e.t), day = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       if (day !== lastDay) { h += '<div class="day">' + esc(day) + '</div>'; lastDay = day; }
@@ -444,7 +452,7 @@
   function field(label, path, attrs) { return '<label>' + label + '</label><input data-s="' + path + '" value="' + esc(getPath(path)) + '" ' + (attrs === undefined ? 'inputmode="decimal"' : attrs) + '>'; }
   function sel(label, path, opts) { var v = String(getPath(path)); return '<label>' + label + '</label><select data-s="' + path + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; }
   function vSettings() {
-    var h = '<button class="pri big" data-act="wizard">Asistente de configuración</button>' +
+    var h = '<button class="pri big" data-act="wizard">Asistente de configuración</button><button class="big" data-act="guide">Guía fácil: qué es cada cosa</button>' +
       '<section class="card"><h2>Tus insulinas</h2>' + sel('Rápida (comidas)', 'cfg.rapid', [['', '—']].concat(RAPIDS.map(function (x) { return [x, x]; }))) + sel('Lenta', 'cfg.basal', [['', '—']].concat(BASALS.map(function (x) { return [x, x]; }))) + '</section>' +
       '<section class="card"><h2>Tus pautas</h2><div class="note info">Pon aquí los valores que te ha dado tu equipo de diabetes. La app no trae ninguno puesto, y sin ellos no calcula dosis.</div>' +
       sel('Cómo te han dado el ratio', 'cfg.ratioMode', [['r', 'Unidades de insulina por ración (10 g)'], ['g', 'Gramos de hidratos que cubre 1 unidad']]) +
@@ -455,7 +463,8 @@
       sel('La insulina activa se descuenta…', 'cfg.iobMode', [['total', 'de toda la dosis (más prudente)'], ['corr', 'solo de la parte de corrección']]) +
       sel('Tu pluma dosifica de…', 'cfg.step', [['1', '1 en 1 unidad'], ['0.5', '0,5 en 0,5 unidades']]) +
       field('Dosis máxima por inyección (tope de seguridad, opcional)', 'cfg.maxBolus') +
-      field('Por debajo de esta glucosa no sugerir dosis (mg/dL) · línea roja', 'cfg.hypo') + '</section>';
+      field('Por debajo de esta glucosa no sugerir dosis (mg/dL) · línea roja', 'cfg.hypo') +
+      sel('Tener en cuenta la flecha del sensor', 'cfg.useTrend', [['0', 'No, solo avisar'], ['1', 'Sí: ±50 / 75 / 100 mg/dL (regla del documento de la Dra. Barrio)']]) + '</section>';
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
@@ -482,6 +491,52 @@
     view.innerHTML = h;
   }
 
+  // ---------- guía fácil ----------
+  var GUIDE = [
+    ['Lo básico', '<p>La <b>glucosa</b> es el azúcar que llevas en la sangre. Los <b>hidratos de carbono</b> (pan, arroz, pasta, fruta, leche, azúcar…) la suben; la <b>insulina</b> la baja.</p><p>Usas dos insulinas: la <b>lenta</b> (' + '{basal}' + ') hace de «fondo» todo el día, y la <b>rápida</b> (' + '{rapid}' + ') es la de las comidas y la que corrige cuando vas alto. Esta app solo calcula la rápida.</p>'],
+    ['Hidratos y raciones', '<p>Una <b>ración</b> son 10 g de hidratos. Ejemplo: 200 g de arroz cocido tienen unos 56 g de hidratos, o sea 5,6 raciones.</p><p>No tienes que sumar nada: tú dices qué y cuánto comes y la app lo cuenta. Lo importante es acertar con la cantidad; pesar de vez en cuando ayuda a calcular a ojo.</p>'],
+    ['El ratio', '<p>El <b>ratio</b> dice cuánta insulina necesitas por cada ración. Con 1,5 unidades por ración, 4 raciones son 6 unidades.</p><p>Hay quien lo tiene al revés: «1 unidad cubre 8 g de hidratos». Es lo mismo dicho de otra forma.</p><p>Suele cambiar según la hora: en general hace falta más en el desayuno, después en merienda y cena, y menos en la comida, aunque cada persona es distinta y cambia con el tiempo.</p>'],
+    ['El factor de sensibilidad (la corrección)', '<p>Dice <b>cuánto te baja la glucosa 1 unidad</b>. Con un factor de 40, si llegas a comer con 180 y tu objetivo es 100, te sobran 80: 80 ÷ 40 = 2 unidades más.</p><p>Si llegas por debajo del objetivo, la cuenta sale negativa y te quita insulina.</p><p>Una forma de estimarlo es la «regla del 1700»: 1700 ÷ toda la insulina que te pones en un día (lenta + rápida). Si en un día te pones 40 unidades, 1700 ÷ 40 ≈ 42.</p>'],
+    ['Las metas', '<p>Como orientación general (tu endocrino puede ponerte otras):</p><ul><li>Antes de comer: entre 80 y 120.</li><li>Una hora después: por debajo de 160–180.</li><li>Dos horas después: por debajo de 140.</li></ul>'],
+    ['La insulina activa', '<p>La rápida no actúa de golpe: tarda unas horas. Si te pinchaste hace poco, parte de esa insulina todavía está bajándote la glucosa. La app lo resta para que no «dupliques».</p><p>Como idea: a las 3 horas queda alrededor de un 30 % y a las 4 horas un 10 %. Por eso no conviene poner una corrección antes de que pasen 2 horas de la dosis anterior.</p>'],
+    ['Las flechas del sensor', '<p>La flecha dice hacia dónde va tu glucosa: → estable, ↗ o ↘ cambia 1–2 mg/dL por minuto, ↑ o ↓ más de 2 por minuto.</p><p>Una forma de usarlas (la del documento de la Dra. Barrio) es sumar o restar a tu glucosa lo que habrá subido o bajado en 30 minutos: 50 con ↗ o ↘, 75 o 100 con ↑ o ↓. Ejemplo: 140 con ↗ se calcula como 190.</p><p>Se activa en Ajustes → «Tener en cuenta la flecha». Si no lo activas, la app solo te avisa.</p>'],
+    ['Grasas y proteínas', '<p>Una pizza o una comida con mucha grasa sube la glucosa <b>más tarde</b>, a partir de las 3 horas, y durante varias horas. Al principio puede incluso darte una bajada.</p><p>La app aún no calcula esa parte. Si te pasa a menudo con ciertas comidas, coméntalo con tu equipo: hay formas de cubrirlo con un poco más de insulina más tarde.</p>'],
+    ['Cómo aprende la app y te propone ratios', '<p>Cada vez que registras una comida, la app mira en la gráfica del Libre cómo acabaste 1, 2 y 3 horas después.</p><p>Con eso calcula cuánta insulina te habría dejado bien en cada comida. Cuando tiene al menos 5 comidas de una franja (por ejemplo, cenas), compara con tu ratio:</p><ul><li>Si te habría hecho falta bastante más, te propone <b>subir un 10 %</b>.</li><li>Si te sobraba, te propone <b>bajar un 10 %</b>.</li><li>Si has bajado de 70 dos veces, te propone bajar aunque falten datos.</li></ul><p>Los cambios son siempre pequeños, de uno en uno, y después espera unos días para ver el efecto. <b>Nunca cambia nada sola</b>: tú decides, y lo ideal es hacerlo de acuerdo con tu endocrino.</p><p>No cuentan las comidas sin glucosa antes, sin datos del Libre después, o con otra dosis de rápida en las 3 horas siguientes.</p>'],
+    ['Si bajas de 70', '<p>Eso es una hipoglucemia. Trátala como te haya enseñado tu equipo y vuelve a medir. Con la glucosa por debajo de 70 la app no te sugiere ninguna dosis.</p>']
+  ];
+  function dlgGuide() {
+    var sub = function (s) { return s.replace('{basal}', esc(hasBasal() ? basalName() : 'por ejemplo Tresiba')).replace('{rapid}', esc(S.cfg.rapid && S.cfg.rapid !== 'Otra' ? S.cfg.rapid : 'por ejemplo Fiasp')); };
+    openDlg('<h3>Guía fácil</h3><p class="mut">Lo necesario para entender la app, explicado desde cero.</p>' +
+      GUIDE.map(function (g, i) { return '<details class="gd"' + (i === 0 ? ' open' : '') + '><summary>' + g[0] + '</summary>' + sub(g[1]) + '</details>'; }).join('') +
+      '<p class="fine">Basado en «Ajuste de la dosis de insulina para cubrir la ingesta» (Dra. Raquel Barrio y Lourdes Cartaya, 2020) y en la guía del Ministerio de Sanidad. Es información general: tus pautas te las da tu equipo de diabetes.</p>' +
+      '<div class="acts"><button class="pri" data-act="close">Cerrar</button></div>');
+  }
+
+  // ---------- asesor de ratios ----------
+  function uprText(u) { return S.cfg.ratioMode === 'r' ? fmt(u, 2) + ' U/ración' : fmt(10 / u, 1) + ' g por unidad'; }
+  function advisorHTML() {
+    var R = Learn.ratios(S.log, { now: Date.now(), days: 30, mode: S.cfg.ratioMode, ratios: S.cfg.ratios, isf: S.cfg.isf, dia: S.cfg.dia, low: num(S.cfg.hypo) || 70, changes: S.cfg.ratioLog || [] });
+    var h = '<section class="card"><h2>Tus ratios · asesor</h2>';
+    SLOTS.forEach(function (x) {
+      var r = R[x[0]], txt = '', btn = '';
+      if (r.action === 'sin') txt = 'Sin ratio puesto.';
+      else if (r.action === 'datos') txt = 'Aprendiendo: ' + r.n + ' de 5 comidas válidas.';
+      else if (r.action === 'esperar') txt = 'Lo cambiaste ' + agoText(r.changedAt) + '. Espera unos días con el ratio nuevo (' + r.n + ' comidas desde entonces).';
+      else if (r.okBy === 'pdf') txt = 'Va bien: en ' + r.good + ' de tus ' + r.clean + ' comidas empezaste entre 80 y 120 y a las 2 h estabas por debajo de 140, como pide el documento. Con ' + uprText(r.goodMed) + ' de media.';
+      else if (r.action === 'ok') txt = 'Va bien: con tus ' + r.n + ' comidas, lo que habría hecho falta (' + uprText(r.med) + ') está cerca de lo que usas.';
+      else if (r.action === 'menos-hipo') { txt = 'Has bajado de ' + fmt(num(S.cfg.hypo) || 70, 0) + ' en ' + r.lows + ' comidas desde el último cambio. Propuesta: <b>un 10 % menos de insulina</b>, ' + uprText(r.newUpr) + '.'; }
+      else { txt = 'Con tus ' + r.n + ' comidas, lo que te habría dejado bien sale de media ' + uprText(r.med) + '. Propuesta: <b>un 10 % ' + (r.action === 'mas' ? 'más' : 'menos') + ' de insulina</b>, ' + uprText(r.newUpr) + '.'; }
+      if (r.newVal) btn = '<button class="chip mini" data-act="ratioapply" data-slot="' + x[0] + '">Aplicar</button>';
+      if (r.good && r.action !== 'sin' && !r.okBy) txt += ' <span class="mut">En ' + r.good + ' comidas te salió como pide el PDF (80–120 antes y &lt;140 a las 2 h), con ' + uprText(r.goodMed) + ' de media.</span>';
+      h += '<div class="adv ' + r.action + '"><div class="kv"><b>' + x[1] + '</b><span>' + (r.cur ? uprText(r.cur) : '—') + btn + '</span></div><p>' + txt + '</p></div>';
+    });
+    var T = Learn.tdd(S.log, Date.now());
+    if (T) h += '<div class="adv"><div class="kv"><b>Factor de sensibilidad</b><span>' + (num(S.cfg.isf) ? fmt(num(S.cfg.isf), 0) : '—') + '</span></div><p>Te pones de media ' + fmt(T.tdd, 0) + ' unidades al día (' + T.days + ' días con lenta y rápida apuntadas). La regla del 1700 daría unos ' + fmt(Math.round(1700 / T.tdd / 5) * 5, 0) + '. Solo como referencia para hablarlo con tu endocrino.</p></div>';
+    var lc = (S.cfg.ratioLog || []).slice(-1)[0];
+    h += '<div class="row" style="margin-top:6px"><button class="ghost" data-act="guide">¿Cómo decide esto?</button>' + (lc ? '<button class="ghost" data-act="ratioundo">Deshacer último cambio (' + esc(slotName(lc.slot).toLowerCase()) + ')</button>' : '') + '</div>';
+    return h + '<p class="fine">Las propuestas salen de tus datos con el método del documento de la Dra. Barrio y se dan de un 10 % en un 10 %, como recomienda la guía del Ministerio de Sanidad. Lo ideal es aplicarlas de acuerdo con tu endocrino.</p></section>';
+  }
+
   // ---------- asistente de configuración ----------
   function wchips(path, opts) {
     var cur = getPath(path), v = String(cur == null ? '' : cur);
@@ -503,7 +558,8 @@
         (same ? field(lab, 'cfg.ratioAll') : '<p class="fine">' + lab + ':</p><div class="grid2">' + SLOTS.map(function (x) { return '<div>' + field(x[1], 'cfg.ratios.' + x[0]) + '</div>'; }).join('') + '</div>');
     } },
     { t: 'Corrección', b: function () {
-      return '<p class="mut">Para cuando llegas a comer por encima o por debajo de tu objetivo.</p>' + field('Glucosa objetivo (mg/dL)', 'cfg.target') + field('Factor de sensibilidad: cuántos mg/dL te baja 1 unidad', 'cfg.isf');
+      return '<p class="mut">Para cuando llegas a comer por encima o por debajo de tu objetivo.</p>' + field('Glucosa objetivo (mg/dL)', 'cfg.target') + field('Factor de sensibilidad: cuántos mg/dL te baja 1 unidad', 'cfg.isf') +
+        '<label>¿Tener en cuenta la flecha del sensor?</label><p class="fine" style="margin-top:0">Suma o resta lo que subirá o bajará tu glucosa en 30 minutos (50, 75 o 100), como explica el documento de la Dra. Barrio.</p>' + wchips('cfg.useTrend', [['0', 'No, solo avisar'], ['1', 'Sí']]);
     } },
     { t: 'Cuánto dura la rápida', b: function () {
       return '<p class="mut">Sirve para descontar la insulina que todavía te hace efecto.' + (S.cfg.rapid === 'Fiasp' ? ' Según el prospecto de Fiasp, su efecto dura entre 3 y 5 horas; elige la que te indique tu endocrino.' : ' Pon la que te indique tu endocrino.') + '</p>' +
@@ -676,8 +732,8 @@
       case 'logsave': {
         var u = num($('#ru').value); if (u === null) u = 0;
         if (u < 0 || u > 100) { toast('Revisa las unidades'); break; }
-        var cc = compute();
-        S.log.push({ t: Date.now(), ins: 'rapida', slot: cc.slot, carbs: Math.round(cc.carbs * 10) / 10, glucose: cc.g.v, trend: +S.now.trend || 0, sug: cc.r.ok ? cc.r.total : null, u: u, items: S.meal.items.map(function (x) { return x.name; }).join(', ') });
+        var cc = compute(), iob0 = activeInsulin();
+        S.log.push({ t: Date.now(), ins: 'rapida', iob: Math.round(iob0 * 100) / 100, slot: cc.slot, carbs: Math.round(cc.carbs * 10) / 10, glucose: cc.g.v, trend: +S.now.trend || 0, sug: cc.r.ok ? cc.r.total : null, u: u, items: S.meal.items.map(function (x) { return x.name; }).join(', ') });
         remember(S.meal.items);
         S.meal = { items: [], slot: '' }; save(); closeDlg(); tab = 'ahora'; render(); window.scrollTo(0, 0); toast('Registrado'); break;
       }
@@ -693,6 +749,23 @@
         if (!(bv > 0) || bv > 200) { toast('Revisa las unidades'); break; }
         S.log.push({ t: Date.now(), ins: 'basal', u: bv, carbs: 0, name: basalName() });
         save(); closeDlg(); render(); toast(basalName() + ' apuntada'); break;
+      }
+      case 'guide': dlgGuide(); break;
+      case 'ratioapply': {
+        var sl = b.dataset.slot, R = Learn.ratios(S.log, { now: Date.now(), days: 30, mode: S.cfg.ratioMode, ratios: S.cfg.ratios, isf: S.cfg.isf, dia: S.cfg.dia, low: num(S.cfg.hypo) || 70, changes: S.cfg.ratioLog || [] })[sl];
+        if (!R || !R.newVal) break;
+        var nv = String(R.newVal).replace('.', ',');
+        confirmDlg('Cambiar el ratio de ' + slotName(sl).toLowerCase() + ' de ' + uprText(R.cur) + ' a ' + uprText(R.newUpr) + ' (' + (R.newUpr > R.cur ? 'un 10 % más' : 'un 10 % menos') + ' de insulina). Si tu equipo no te ha dicho que puedes ajustarlo tú, coméntaselo antes. Después vigila las próximas comidas de esa franja; si bajas de 70, puedes deshacerlo desde aquí.', function () {
+          S.cfg.ratioLog = (S.cfg.ratioLog || []).concat([{ t: Date.now(), slot: sl, from: S.cfg.ratios[sl], to: nv }]);
+          S.cfg.ratios[sl] = nv; S.cfg.sameRatio = '0';
+          save(); render(); toast('Ratio de ' + slotName(sl).toLowerCase() + ' cambiado');
+        });
+        break;
+      }
+      case 'ratioundo': {
+        var lc = (S.cfg.ratioLog || []).slice(-1)[0]; if (!lc) break;
+        confirmDlg('Volver el ratio de ' + slotName(lc.slot).toLowerCase() + ' a ' + lc.from + '?', function () { S.cfg.ratios[lc.slot] = lc.from; S.cfg.ratioLog = S.cfg.ratioLog.slice(0, -1); save(); render(); toast('Cambio deshecho'); });
+        break;
       }
       case 'recent': { var rc = S.recent[i]; if (rc) addFood(rc); break; }
       case 'wizard': wz = 0; renderWz(); break;

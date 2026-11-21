@@ -52,7 +52,8 @@
     return 'cena';
   }
 
-  /* p: {carbs, glucose|null, gPerU, isf, target, iob, iobMode:'total'|'corr', step, maxBolus|null, hypo} */
+  /* p: {carbs, glucose|null, gPerU, isf, target, iob, iobMode:'total'|'corr', step, maxBolus|null, hypo, trendAdj}
+     trendAdj: mg/dL que se suman a la glucosa para la corrección según la flecha (regla 50/75/100). */
   function bolus(p) {
     var glucose = num(p.glucose);
     var hypo = num(p.hypo) || 70;
@@ -63,14 +64,15 @@
 
     var carbs = Math.max(0, num(p.carbs) || 0);
     var food = carbs / gPerU;
-    var corr = glucose === null ? 0 : (glucose - target) / isf;
+    var adj = glucose === null ? 0 : (num(p.trendAdj) || 0);
+    var corr = glucose === null ? 0 : (glucose + adj - target) / isf;
     var active = Math.max(0, num(p.iob) || 0);
     var iobUsed = p.iobMode === 'corr' ? Math.min(active, Math.max(corr, 0)) : active;
     var raw = food + corr - iobUsed;
     var total = Math.max(0, roundStep(raw, num(p.step) || 1));
     var max = num(p.maxBolus), capped = false;
     if (max > 0 && total > max) { total = max; capped = true; }
-    return { ok: true, carbs: carbs, food: food, corr: corr, iob: active, iobUsed: iobUsed, raw: raw, total: total, capped: capped, hasGlucose: glucose !== null };
+    return { ok: true, carbs: carbs, food: food, corr: corr, trendAdj: adj, iob: active, iobUsed: iobUsed, raw: raw, total: total, capped: capped, hasGlucose: glucose !== null };
   }
 
   var api = { RACION: RACION, num: num, roundStep: roundStep, carbsOf: carbsOf, mealCarbs: mealCarbs, gramsPerUnit: gramsPerUnit, iob: iob, slotFor: slotFor, bolus: bolus };

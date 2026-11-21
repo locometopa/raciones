@@ -16,6 +16,9 @@ App Android hecha con tecnología web (carpeta `www`) envuelta con Capacitor.
 - **Insulinas**: rápida (Fiasp por defecto en el asistente si la eliges) y lenta (Tresiba…). La lenta se apunta desde Ahora y no cuenta como insulina activa.
 - **Menos datos que escribir**: cada alimento se añade con la cantidad de la última vez o su ración normal, y hay botones con lo último que has tomado. Bebidas en ml y cosas por unidades (sobres de azúcar, rebanadas, piezas de fruta).
 - **Aprendizaje** (`www/js/learn.js`): con la gráfica del Libre mira la glucosa 2–3 h después de cada comida y muestra patrones por franja y por alimento. Solo observa: no cambia las pautas.
+- **Asesor de ratios** (Registro): con la glucosa 1–4 h después de cada comida estima la insulina que te habría dejado bien y, con al menos 5 comidas por franja, propone cambios de un 10 % (o bajar si ha habido 2 bajadas de 70). Se aplican solo si confirmas y se pueden deshacer. También estima el factor de sensibilidad con la regla del 1700. Basado en el documento «Ajuste de la dosis de insulina para cubrir la ingesta» (Dra. Barrio y L. Cartaya, 2020).
+- **Flechas**: opción para sumar o restar 50/75/100 mg/dL según la flecha (regla del mismo documento).
+- **Guía fácil**: explicaciones desde cero dentro de la app.
 - **Historial**: comidas y dosis registradas, insulina activa y exportación CSV.
 
 Los datos se guardan solo en el dispositivo (Ajustes → Copia de seguridad).

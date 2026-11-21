@@ -72,3 +72,13 @@ console.log('calc: todas las pruebas pasan');
 near(C.carbsOf({ grams: '2', hc100: 8, unit: 'ud' }), 16, 'dos sobres de azúcar');
 near(C.carbsOf({ grams: 200, hc100: 3.4, unit: 'ml' }), 6.8, 'café con leche');
 console.log('calc (unidades): todas las pruebas pasan');
+
+// Flecha (regla 50/75/100 del PDF): ejemplo del PDF — 150 ↗ (+50) con objetivo 100, FC 40, 30 g, 1 U/10 g y 1 U activa = 4,5 U
+let rf = C.bolus({ carbs: 30, glucose: 150, trendAdj: 50, gPerU: 10, isf: 40, target: 100, iob: 1, step: 0.5 });
+near(rf.corr, 2.5); near(rf.total, 4.5); near(rf.trendAdj, 50);
+// Bajando rápido resta; nunca sale negativa
+rf = C.bolus({ carbs: 10, glucose: 120, trendAdj: -100, gPerU: 10, isf: 40, target: 100, step: 0.5 });
+near(rf.corr, -2); near(rf.total, 0);
+// La hipoglucemia se mira con la glucosa real, no con la ajustada
+assert.strictEqual(C.bolus({ carbs: 30, glucose: 65, trendAdj: 75, gPerU: 10, isf: 40, target: 100 }).reason, 'hypo');
+console.log('calc (flechas): todas las pruebas pasan');

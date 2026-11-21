@@ -96,7 +96,7 @@ setGlucose(180, 2);
 assert.ok($('.dose b').textContent.startsWith('10,5'), 'dosis con corrección: ' + $('.dose b').textContent);
 assert.ok($('#sum').textContent.includes('10,5 U'));
 assert.ok(text().includes('bajando'));
-assert.ok(text().includes('Fiasp, según su prospecto'));
+assert.ok(text().includes('su prospecto permite pincharla'));
 assert.ok($('[data-tab="comida"]').classList.contains('on'), 'tras escribir la glucosa sigue en Comida');
 
 // HC a mano: +14 g → 70 g
@@ -216,5 +216,41 @@ w.close();
 w = boot({ cfg: {}, now: { v: '140', trend: 3, t: now - 3 * 3600e3, src: 'manual' } });
 assert.ok(w.document.querySelector('.gcard.old'));
 w.close();
+
+// ---- 0.7: flecha, asesor de ratios y guía ----
+{
+  const H = 3600e3, D = 24 * H, t0 = Date.now();
+  const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '40', target: '100', dia: '4', iobMode: 'total', step: '0.5', hypo: '70', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok', useTrend: '1' };
+  const log = [{ t: t0 - 2 * H - 60000, ins: 'rapida', slot: 'comida', carbs: 20, u: 2, glucose: 110 }];
+  for (let i = 1; i <= 6; i++) log.push({ t: t0 - i * D, ins: 'rapida', slot: 'cena', carbs: 60, u: 6, glucose: 120, iob: 0, items: 'Pizza', post: { g1: 220, g2: 240, g3: 250, max: 260, min: 115 } });
+  w = boot({ cfg, log, now: { v: '150', trend: 4, t: t0 - 60000, src: 'libre' }, meal: { items: [{ name: 'Hidratos a mano', hcDirect: '30' }], slot: 'comida' } });
+  d = w.document;
+  const q = (sel) => d.querySelector(sel), vt = () => q('#view').textContent;
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  assert.ok(!q('#dlg').textContent.includes('Vamos'), 'ya configurado: sin asistente');
+  // Guía desde Ahora
+  k(q('[data-act="guide"]')); assert.ok(q('#dlg').textContent.includes('Guía fácil')); assert.ok(q('#dlg').textContent.includes('regla del 1700')); assert.ok(q('#dlg').textContent.includes('Fiasp')); k(q('[data-act="close"]'));
+  // Ejemplo del PDF: 150 ↗ (+50), objetivo 100, FC 40, 30 g, 1 U/ración, ~1 U activa → 4,5 U
+  k(q('[data-tab="comida"]'));
+  assert.ok(q('.dose b').textContent.startsWith('4,5'), 'ejemplo del PDF: ' + q('.dose b').textContent);
+  assert.ok(vt().includes('+ 50 por la flecha')); assert.ok(vt().includes('esperar 5–10 minutos'));
+  // Sin la opción de flecha: 3 + 1,25 − 1 = 3,25 → 3,5
+  w.__raciones.state().cfg.useTrend = '0'; w.__raciones.render();
+  assert.ok(q('.dose b').textContent.startsWith('3,5'), 'sin flecha: ' + q('.dose b').textContent);
+  // Asesor: propone +10 % en la cena, se aplica con confirmación y se puede deshacer
+  k(q('[data-tab="registro"]'));
+  assert.ok(vt().includes('Tus ratios')); assert.ok(vt().includes('un 10 % más de insulina'));
+  assert.ok(vt().includes('Aprendiendo: 0 de 5'), 'la comida aún sin datos');
+  k(q('[data-act="ratioapply"][data-slot="cena"]')); assert.ok(q('#dlg').textContent.includes('de 1 U/ración a 1,1 U/ración'));
+  k(q('[data-act="yes"]'));
+  assert.strictEqual(w.__raciones.state().cfg.ratios.cena, '1,1'); assert.strictEqual(w.__raciones.state().cfg.ratioLog.length, 1);
+  assert.ok(vt().includes('Lo cambiaste'), 'tras el cambio, espera');
+  k(q('[data-act="ratioundo"]')); k(q('[data-act="yes"]'));
+  assert.strictEqual(w.__raciones.state().cfg.ratios.cena, '1'); assert.strictEqual(w.__raciones.state().cfg.ratioLog.length, 0);
+  // Registrar guarda la insulina activa del momento
+  k(q('[data-tab="comida"]')); k(q('[data-act="log"]')); q('#ru').value = '3'; k(q('[data-act="logsave"]'));
+  const last = w.__raciones.state().log.slice(-1)[0]; assert.ok(last.iob > 0.9 && last.iob < 1.01, 'iob ' + last.iob);
+  w.close();
+}
 
 console.log('interfaz: todas las pruebas pasan');
