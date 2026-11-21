@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.5.0';
+  var VERSION = '0.5.1';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -167,7 +167,7 @@
         (direct ? 'hidratos que has puesto tú' : fmt(num(it.hc100) || 0, 1) + ' g de HC por cada 100 g') + (it.est ? ' · <span class="estm">estimado por IA</span>' : '') + '</small></div>' +
         '<button class="x" data-act="del" data-i="' + i + '" aria-label="Quitar ' + esc(it.name) + '">✕</button></div>' +
         '<div class="it-qty"><label class="qty"><input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="0" aria-label="' + (direct ? 'Gramos de hidratos' : 'Gramos de ' + esc(it.name)) + '"><span>' + (direct ? 'g de HC' : 'gramos') + '</span></label>' +
-        (!direct && it.portion ? '<button class="chip mini" data-act="portion" data-i="' + i + '">Ración normal: ' + it.portion + ' g</button>' : '') +
+        (!direct && it.portion ? '<button class="chip mini" data-act="portion" data-i="' + i + '">Ración ' + it.portion + ' g</button>' : '') +
         '<span class="hc" id="hc' + i + '"></span></div></div>';
     });
     h += '</div></section><section class="card" id="res"></section>';
