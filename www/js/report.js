@@ -9,6 +9,29 @@ var Report = (function () {
   function r1(n) { return n == null ? null : Math.round(n * 10) / 10; }
 
   /* o: {hist:[[t,v]], log, cfg, now, days} */
+  /* Perfil de glucosa ambulatorio (AGP): percentiles 5, 25, 50, 75 y 95 por media hora del día. */
+  function pctl(sorted, q) { if (!sorted.length) return null; var i = (sorted.length - 1) * q, a = Math.floor(i), b = Math.ceil(i); return sorted[a] + (sorted[b] - sorted[a]) * (i - a); }
+  function agp(hist, now, days) {
+    now = now || Date.now(); days = days || 14;
+    var bins = []; for (var i = 0; i < 48; i++) bins.push([]);
+    (hist || []).forEach(function (p) { if (p[0] < now - days * D || p[0] > now) return; var d = new Date(p[0]); bins[d.getHours() * 2 + (d.getMinutes() >= 30 ? 1 : 0)].push(p[1]); });
+    return bins.map(function (b, i) {
+      var s = b.slice().sort(function (x, y) { return x - y; });
+      return { m: i * 30, n: s.length, p5: pctl(s, 0.05), p25: pctl(s, 0.25), p50: pctl(s, 0.5), p75: pctl(s, 0.75), p95: pctl(s, 0.95) };
+    });
+  }
+  /* Lecturas de cada uno de los últimos días (del más antiguo al de hoy). */
+  function daily(hist, now, days) {
+    now = now || Date.now(); days = days || 14;
+    var d0 = new Date(now); d0.setHours(0, 0, 0, 0);
+    var out = [];
+    for (var k = days - 1; k >= 0; k--) {
+      var s = d0.getTime() - k * D;
+      out.push({ day: s, pts: (hist || []).filter(function (p) { return p[0] >= s && p[0] < s + D; }) });
+    }
+    return out;
+  }
+
   function build(o) {
     var now = o.now || Date.now(), days = o.days || 14, from = now - days * D;
     var pts = (o.hist || []).filter(function (p) { return p[0] >= from && p[0] <= now; }).sort(function (a, b) { return a[0] - b[0]; });
@@ -112,7 +135,7 @@ var Report = (function () {
     return L.join('\n');
   }
 
-  var api = { build: build, text: text };
+  var api = { agp: agp, daily: daily, build: build, text: text };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   return api;
 })();

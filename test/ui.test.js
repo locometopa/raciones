@@ -13,7 +13,7 @@ function boot(stored, pre) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;

@@ -174,7 +174,63 @@ var Vision = (function () {
 
   function describe(text, cfg) { return estimate(null, text, cfg); }
 
-  var api = { estimate: estimate, describe: describe, parse: parse, parseText: parseText, fileToJpegBase64: fileToJpegBase64, PROVIDERS: PROVIDERS };
+  /* ---------- etiqueta nutricional ---------- */
+  var LSYS = 'Lees la tabla de información nutricional de la foto de un envase de alimento. Devuelve los gramos de hidratos de carbono por cada 100 g (o por cada 100 ml si es una bebida o la tabla viene por 100 ml). ' +
+    'Usa la fila «Hidratos de carbono» (carbohidratos, carbohydrate), nunca solo «azúcares». Si la tabla solo da valores por ración, calcula el valor por 100 con el tamaño de la ración. Si no se lee bien la tabla, devuelve hc_por_100 null y explícalo en notas.';
+  var LFIELDS = 'Devuelve SOLO un objeto JSON, sin texto alrededor, con esta forma exacta: {"nombre":"texto corto del producto en español","hc_por_100":numero o null,"unidad":"g|ml","racion":numero o null,"notas":"texto"}';
+  var LTOOL = {
+    name: 'leer_etiqueta',
+    description: 'Registra los hidratos por 100 g o 100 ml leídos de la etiqueta.',
+    input_schema: { type: 'object', properties: {
+      nombre: { type: 'string' }, hc_por_100: { type: ['number', 'null'] }, unidad: { type: 'string', enum: ['g', 'ml'] },
+      racion: { type: ['number', 'null'], description: 'Tamaño de una ración en g o ml, si aparece' }, notas: { type: 'string' } }, required: ['nombre', 'hc_por_100', 'unidad', 'notas'] }
+  };
+  function cleanLabel(o) {
+    o = o || {};
+    var hc = o.hc_por_100 === null || o.hc_por_100 === undefined || o.hc_por_100 === '' ? null : Number(String(o.hc_por_100).replace(',', '.'));
+    if (hc !== null && !(hc >= 0 && hc <= 100)) hc = null;
+    var r = o.racion == null ? null : Number(String(o.racion).replace(',', '.'));
+    return { name: String(o.nombre || 'Producto').slice(0, 60), hc100: hc === null ? null : Math.round(hc * 10) / 10, unit: o.unidad === 'ml' ? 'ml' : 'g', portion: r > 0 && r < 5000 ? Math.round(r) : null, notes: String(o.notas || '').slice(0, 300) };
+  }
+  function parseLabelText(t) {
+    var s2 = String(t || ''), a = s2.indexOf('{'), b = s2.lastIndexOf('}');
+    if (a < 0 || b <= a) throw VisionError('proto', 'La IA no ha podido leer la etiqueta. Prueba con una foto más cerca y con luz.');
+    try { return cleanLabel(JSON.parse(s2.slice(a, b + 1))); } catch (e) { throw VisionError('proto', 'La IA ha devuelto una respuesta incompleta. Prueba otra vez.'); }
+  }
+  async function label(b64, cfg) {
+    cfg = cfg || {};
+    var p = PROVIDERS[cfg.provider] ? cfg.provider : 'claude', P = PROVIDERS[p];
+    var model = String(cfg.model || P.model || '').trim(), key = String(cfg.key || '').trim();
+    if (P.needsUrl && !cfg.url) throw VisionError('cfg', 'Falta la dirección del servicio en Ajustes.');
+    if (!P.needsUrl && !key) throw VisionError('cfg', 'Falta la clave de la API en Ajustes.');
+    var text = 'Lee los hidratos de carbono de esta etiqueta.';
+    if (p === 'claude') {
+      var body = await post('https://api.anthropic.com/v1/messages', { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, {
+        model: model, max_tokens: 600, system: LSYS, tools: [LTOOL], tool_choice: { type: 'tool', name: LTOOL.name },
+        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: text }] }]
+      });
+      var bl = (body && body.content) || [];
+      for (var i = 0; i < bl.length; i++) if (bl[i].type === 'tool_use' && bl[i].input) return cleanLabel(bl[i].input);
+      for (var j = 0; j < bl.length; j++) if (bl[j].type === 'text') return parseLabelText(bl[j].text);
+      throw VisionError('proto', 'La respuesta de la IA no tiene el formato esperado.');
+    }
+    if (p === 'gemini') {
+      var g = await post('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', { 'content-type': 'application/json', 'x-goog-api-key': key }, {
+        systemInstruction: { parts: [{ text: LSYS + ' ' + LFIELDS }] },
+        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64 } }, { text: text }] }],
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1024 }
+      });
+      var c = g.candidates && g.candidates[0];
+      return parseLabelText(c && c.content && Array.isArray(c.content.parts) ? c.content.parts.map(function (x) { return x.text || ''; }).join('') : '');
+    }
+    var base = p === 'openai' ? 'https://api.openai.com/v1' : p === 'deepseek' ? 'https://api.deepseek.com' : String(cfg.url).trim().replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+    var hdr = { 'content-type': 'application/json' }; if (key) hdr.authorization = 'Bearer ' + key;
+    var bd = { model: model, messages: [{ role: 'system', content: LSYS + ' ' + LFIELDS }, { role: 'user', content: [{ type: 'text', text: text }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] }] };
+    if (p === 'openai') { bd.max_completion_tokens = 1024; bd.response_format = { type: 'json_object' }; } else bd.max_tokens = 600;
+    return parseLabelText(textOfChat(await post(base + '/chat/completions', hdr, bd)));
+  }
+
+  var api = { label: label, cleanLabel: cleanLabel, parseLabelText: parseLabelText, estimate: estimate, describe: describe, parse: parse, parseText: parseText, fileToJpegBase64: fileToJpegBase64, PROVIDERS: PROVIDERS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   return api;
 })();

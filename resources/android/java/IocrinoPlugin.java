@@ -6,7 +6,13 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import androidx.activity.result.ActivityResult;
+import android.app.Activity;
+import android.content.Intent;
+import android.speech.RecognizerIntent;
+import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -80,6 +86,28 @@ public class IocrinoPlugin extends Plugin {
         if (it == null) return;
         String a = it.getStringExtra("accion");
         if (a != null && a.matches("[a-z]{1,12}")) { prefs(c).edit().putString("action", a).apply(); it.removeExtra("accion"); }
+    }
+
+    /* Dictado con el reconocimiento de voz de Android (no necesita permiso de micrófono: lo pide el propio sistema). */
+    @PluginMethod
+    public void listen(PluginCall call) {
+        Intent it = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        it.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        it.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES");
+        it.putExtra(RecognizerIntent.EXTRA_PROMPT, call.getString("prompt", "Habla ahora"));
+        it.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        try { startActivityForResult(call, it, "speechResult"); }
+        catch (Exception e) { call.reject("Este móvil no tiene reconocimiento de voz (instala o activa la app de Google)."); }
+    }
+
+    @ActivityCallback
+    private void speechResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) { call.reject("cancelado"); return; }
+        ArrayList<String> r = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        JSObject o = new JSObject();
+        o.put("text", r != null && !r.isEmpty() ? r.get(0) : "");
+        call.resolve(o);
     }
 
     @PluginMethod

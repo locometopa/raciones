@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.18.0';
+  var VERSION = '0.19.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -19,6 +19,8 @@
     smile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1.8 2 5.2 2 7 0M9 9.5h.01M15 9.5h.01"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
+    tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+    mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
   };
   var native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
@@ -201,7 +203,7 @@
     h += '<section class="card"><h2>¿Qué vas a comer?</h2>' +
       '<div class="sbox">' + ICON.search + '<input id="qi" data-f="qi" type="search" placeholder="Busca: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"></div><div id="qr" class="list"></div>' +
       '<div class="lab">O añádelo de otra forma</div><div class="ways">' +
-      (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') : '') +
+      (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') + way('label', ICON.tag, 'Etiqueta', 'Foto a la tabla del envase') : '') +
       way('barcode', ICON.barcode, 'Código', 'Producto envasado') + way('manual', ICON.pencil, 'Hidratos', 'Ya sé los gramos de HC') + '</div>' +
       (aiOn() ? '' : '<p class="fine">Activa la IA en Ajustes para describir lo que vas a comer o hacerle una foto.</p>');
     if (S.recent.length) h += '<div class="lab">Lo último que has tomado</div><div class="chips">' + S.recent.slice(0, 8).map(function (r, i) { return '<button class="chip" data-act="recent" data-i="' + i + '">' + esc(r.name) + '</button>'; }).join('') + '</div>';
@@ -386,7 +388,14 @@
   function stopScan() { clearInterval(scanTimer); scanTimer = null; if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } }
 
   // ---------- foto del plato (opcional) ----------
+  var photoMode = 'plate';
+  function dlgLabel() {
+    photoMode = 'label';
+    openDlg('<h3>Foto de la etiqueta</h3><p class="mut">Haz una foto de cerca a la <b>tabla de información nutricional</b> del envase, con buena luz. La IA lee los hidratos por 100 g (o 100 ml) y lo guarda en tus alimentos.</p>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button data-act="photogal">Galería</button><button class="pri" data-act="photocam">Hacer foto</button></div>');
+  }
   function dlgPhoto() {
+    photoMode = 'plate';
     estimate = null;
     openDlg('<h3>Foto del plato</h3><p class="mut">La IA propone alimentos y gramos <b>aproximados</b>; después los revisas tú. Ayuda que se vea el plato entero y algo de referencia (un cubierto).</p>' +
       '<label>Pistas (opcional)</label><input id="phint" placeholder="Plato llano grande, es arroz con pollo…">' +
@@ -394,15 +403,77 @@
   }
   function dlgDescribe() {
     estimate = null;
-    openDlg('<h3>Describe lo que vas a comer</h3><p class="mut">Escríbelo como se lo dirías a alguien (también puedes dictarlo con el micrófono del teclado). Si sabes cantidades, dilas.</p>' +
+    openDlg('<h3>Describe lo que vas a comer</h3><p class="mut">Escríbelo como se lo dirías a alguien (o pulsa «Dictar» y dilo en voz alta). Si sabes cantidades, dilas.</p>' +
       '<textarea id="dtext" rows="4" placeholder="Ej.: un plato de lentejas con chorizo, un trozo de pan y una manzana de postre"></textarea>' +
+      (canDictate() ? '<button class="micbtn" data-act="mic">' + ICON.mic + 'Dictar</button>' : '') +
       '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="describego">Calcular con IA</button></div>');
     var t = $('#dtext'); if (t) t.focus();
+  }
+  /* Dictado: en la app, el reconocimiento de voz de Android; en el navegador, el de la web si lo hay. */
+  function canDictate() { return !!(nativeBg() || window.SpeechRecognition || window.webkitSpeechRecognition); }
+  async function dictate() {
+    var ta = $('#dtext'); if (!ta) return;
+    var put = function (t) { if (!t) return; ta.value = (ta.value.trim() ? ta.value.trim() + ', ' : '') + t; ta.focus(); };
+    var nb = nativeBg();
+    if (nb) {
+      try { var r = await nb.listen({ prompt: '¿Qué vas a comer?' }); put(r && r.text); }
+      catch (e) { if (!/cancel/i.test(String(e && e.message))) toast('No se pudo usar el micrófono: ' + (e && e.message || e)); }
+      return;
+    }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return;
+    var rec = new SR(); rec.lang = 'es-ES'; rec.interimResults = false;
+    rec.onresult = function (ev) { put(ev.results[0][0].transcript); };
+    rec.onerror = function () { toast('No se pudo usar el micrófono'); };
+    toast('Habla ahora…'); rec.start();
+  }
+  /* Informe en PDF con gráficas (perfil AGP, días, comidas, insulina). */
+  async function reportPdf() {
+    if (!window.ReportPDF || !document.createElement('canvas').getContext) { toast('No disponible aquí'); return; }
+    toast('Preparando el PDF…');
+    await new Promise(function (r) { setTimeout(r, 50); });
+    try {
+      var now = Date.now(), r = Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: now, days: repDays });
+      var pages = ReportPDF.render({ r: r, agp: Report.agp(S.hist, now, repDays), daily: Report.daily(S.hist, now, Math.min(14, repDays)), cfg: S.cfg, rapid: rapidName(), basal: hasBasal() ? basalName() : '', mood: Coach.moodStats(S.log, num(S.cfg.rangeLow) || 70, num(S.cfg.rangeHigh) || 180, now, repDays) });
+      var b64 = PDF.fromJpegs(pages, 'Informe de glucosa');
+      S.coach.reportShared = 1; save(); checkAch(false);
+      await shareBinary('iocrino-informe-' + today() + '.pdf', b64, 'Informe de glucosa', 'application/pdf');
+    } catch (e) { msgDlg('No se pudo hacer el PDF', e && e.message ? e.message : String(e)); }
+  }
+  async function shareBinary(name, b64, title, mime) {
+    var fs = plug('Filesystem'), sh = plug('Share');
+    if (fs && sh) {
+      try { var w = await fs.writeFile({ path: name, data: b64, directory: 'CACHE' }); await sh.share({ title: title, files: [w.uri], dialogTitle: title }); return true; }
+      catch (e) { if (e && /cancel/i.test(e.message || '')) return false; msgDlg('No se pudo compartir', e && e.message || String(e)); return false; }
+    }
+    var a = document.createElement('a'); a.href = 'data:' + mime + ';base64,' + b64; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    return true;
   }
   async function analyzeText(text) {
     openDlg('<h3>Calculando…</h3><p class="mut">La IA está estimando los alimentos y las cantidades.</p>');
     try { showEstimate(await Vision.describe(text, aiCfg())); }
     catch (e) { msgDlg('No se pudo calcular', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  var labelRes = null;
+  async function analyzeLabel(file) {
+    openDlg('<h3>Etiqueta</h3><p class="mut">Leyendo la tabla…</p>');
+    try { var b64 = await Vision.fileToJpegBase64(file); showLabel(await Vision.label(b64, aiCfg())); }
+    catch (e) { msgDlg('No se pudo leer la etiqueta', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  function showLabel(l) {
+    labelRes = l;
+    openDlg('<h3>Lo que pone la etiqueta</h3>' + (l.hc100 === null ? '<div class="note warn">No se ha podido leer bien el valor de hidratos. Escríbelo tú mirando la tabla.</div>' : '') +
+      '<label>Nombre</label><input id="lbn" value="' + esc(l.name) + '">' +
+      '<div class="grid2"><div><label>Hidratos por 100</label><input id="lbh" inputmode="decimal" value="' + (l.hc100 === null ? '' : String(l.hc100).replace('.', ',')) + '"></div><div><label>Por cada 100…</label><select id="lbu"><option value="g"' + (l.unit === 'g' ? ' selected' : '') + '>gramos</option><option value="ml"' + (l.unit === 'ml' ? ' selected' : '') + '>mililitros</option></select></div></div>' +
+      (l.notes ? '<p class="fine">' + esc(l.notes) + '</p>' : '') + '<p class="fine">Compruébalo con la etiqueta antes de guardar.</p>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button data-act="lbsave">Guardar</button><button class="pri" data-act="lbadd">Guardar y añadir</button></div>');
+  }
+  function saveLabel(addToo) {
+    var nm = $('#lbn').value.trim(), hc = num($('#lbh').value), un = $('#lbu').value === 'ml' ? 'ml' : 'g';
+    if (!nm || hc === null || hc < 0 || hc > 100) { toast('Pon un nombre y los hidratos por 100 (0 a 100)'); return; }
+    var nf = { name: nm, hc100: hc }; if (un === 'ml') nf.unit = 'ml';
+    S.custom.push(nf); save();
+    if (addToo) { closeDlg(); tab = 'comida'; addFood({ name: nm, hc100: hc, unit: un, portion: labelRes && labelRes.portion ? labelRes.portion : null }); }
+    else { closeDlg(); render(); toast('Guardado en tus alimentos'); }
   }
   async function analyzePhoto(file) {
     var hint = ($('#phint') || {}).value || '';
@@ -562,7 +633,7 @@
       field('Modelo' + (P.model ? ' (vacío = ' + esc(P.model) + ')' : ''), 'ai.models.' + pv, 'autocomplete="off" placeholder="' + esc(P.model || 'nombre del modelo') + '"') +
       '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
-    h += '<section class="card"><h2>Mis alimentos propios</h2>' + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
+    h += '<section class="card"><h2>Mis alimentos propios</h2>' + (aiOn() ? '<div class="row"><button data-act="label">' + ICON.tag + ' Añadir desde la foto de una etiqueta</button></div>' : '') + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
@@ -677,7 +748,7 @@
       '<div class="kv"><span>Bajadas apuntadas</span><b>' + r.hipos.length + '</b></div>';
     h += '<div class="lab">Comidas (medias)</div>' + SLOTS.map(function (s) { var m = r.meals[s[0]]; return '<div class="kv"><span>' + s[1] + ' <small class="mut">· ' + m.n + '</small></span><b>' + (m.n ? fmt(m.carbs, 0) + ' g · ' + fmt(m.u, 1) + ' U · ' + (m.pre != null ? fmt(m.pre, 0) : '—') + '→' + (m.post2 != null ? fmt(m.post2, 0) : '—') : '—') + '</b></div>'; }).join('') +
       '<p class="fine">Comidas: hidratos · unidades · glucosa antes → 2 h después.</p>';
-    h += '<div class="acts"><button data-act="close">Cerrar</button><button data-act="repcsv">Compartir datos (CSV)</button><button class="pri" data-act="repshare">Compartir informe</button></div>';
+    h += '<div class="acts"><button data-act="close">Cerrar</button><button data-act="repcsv">Compartir datos (CSV)</button><button data-act="repshare">Compartir texto</button><button class="pri" data-act="reppdf">PDF con gráficas</button></div>';
     openDlg(h);
   }
 
@@ -1347,6 +1418,11 @@
       case 'bcadd': if (bcProduct && bcProduct.hc100 !== null) { if (!S.custom.some(function (x) { return x.code === bcProduct.code; })) S.custom.push({ name: bcProduct.name, hc100: bcProduct.hc100, code: bcProduct.code }); addItem({ name: bcProduct.name, hc100: bcProduct.hc100, grams: '' }); } break;
       case 'bcnew': dlgNewFood(bcProduct && bcProduct.name || '', '', bcProduct && bcProduct.code || ''); break;
       case 'photo': dlgPhoto(); break;
+      case 'label': dlgLabel(); break;
+      case 'lbsave': saveLabel(false); break;
+      case 'lbadd': saveLabel(true); break;
+      case 'mic': dictate(); break;
+      case 'reppdf': reportPdf(); break;
       case 'describe': dlgDescribe(); break;
       case 'describego': { var dt = ($('#dtext') || {}).value || ''; if (!dt.trim()) { toast('Escribe qué vas a comer'); break; } analyzeText(dt.trim()); break; }
       case 'portion': { var pi = S.meal.items[i]; if (pi && pi.portion) { pi.grams = String(pi.portion); save(); render(); } break; }
@@ -1489,7 +1565,7 @@
   });
   ['cam', 'gal'].forEach(function (id) {
     var inp = $('#' + id); if (!inp) return;
-    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) analyzePhoto(f); });
+    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) { if (photoMode === 'label') analyzeLabel(f); else analyzePhoto(f); } });
   });
   dlg.addEventListener('close', function () { stopScan(); wzOpen = false; });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { coachDaily(); nativePull().then(nativeSync); autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); if (tab === 'ahora' && !dlg.open) render(); } });
