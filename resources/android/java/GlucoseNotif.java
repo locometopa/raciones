@@ -3,7 +3,9 @@ package es.locometopa.raciones;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -51,6 +53,9 @@ class GlucoseNotif {
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setCategory(Notification.CATEGORY_STATUS)
                 .setContentIntent(GlucoseWidget.open(c, null, 0));
+            Intent hide = new Intent(c, NotifAction.class).setAction(NotifAction.HIDE);
+            PendingIntent hp = PendingIntent.getBroadcast(c, 7501, hide, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(new Notification.Action.Builder(Icon.createWithResource(c, R.drawable.ic_stat_iocrino), "Quitar de la barra", hp).build());
             if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_LOW);
             nm.notify(ID, b.build());
         } catch (SecurityException ignored) {

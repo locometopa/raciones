@@ -11,4 +11,5 @@
     <string name="sc_comida">Calcular comida</string>
     <string name="sc_lenta">Apuntar lenta</string>
     <string name="sc_bajo">Estoy bajo</string>
+    <string name="tile_label">Glucosa fija</string>
 </resources>

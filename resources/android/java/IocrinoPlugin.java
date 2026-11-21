@@ -62,6 +62,8 @@ public class IocrinoPlugin extends Plugin {
         r.put("trend", trend);
         r.put("err", p.getString("err", ""));
         r.put("action", p.getString("action", ""));
+        r.put("persistSet", p.getString("persistSet", ""));
+        p.edit().remove("persistSet").apply();
         p.edit().remove("action").apply();
         call.resolve(r);
     }

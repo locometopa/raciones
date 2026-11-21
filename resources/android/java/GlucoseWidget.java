@@ -46,6 +46,7 @@ public class GlucoseWidget extends AppWidgetProvider {
         refresh(c, m, GlucoseWidgetBig.class, R.layout.widget_big, true);
         refresh(c, m, GlucoseWidgetWide.class, R.layout.widget_wide, true);
         GlucoseNotif.update(c);
+        GlucoseTile.requestRefresh(c);
     }
 
     static void refresh(Context c, AppWidgetManager m, Class<?> cls, int layout, boolean chart) {

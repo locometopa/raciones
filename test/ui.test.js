@@ -398,9 +398,9 @@ function v010() {
 
 // ---- 0.11: grasa, ejercicio, material y parte nativa ----
 async function v011() {
-  const H = 3600e3, D = 864e5, t0 = Date.now(), sched = [], calls = [];
+  const H = 3600e3, D = 864e5, t0 = Date.now(), sched = [], calls = []; let getN = 0;
   const notif = { registerActionTypes: async () => {}, addListener: () => Promise.resolve({ remove() {} }), cancel: async () => {}, checkPermissions: async () => ({ display: 'granted' }), requestPermissions: async () => ({ display: 'granted' }), schedule: async (o) => { o.notifications.forEach((n) => sched.push(n)); } };
-  const iocr = { setData: async (o) => { calls.push(['set', JSON.parse(o.json), o.last]); }, getData: async () => ({ hist: JSON.stringify([[t0 - 20 * 60000, 150], [t0 - 5 * 60000, 160]]), trend: 4, session: '' }), runNow: async () => { calls.push(['run']); } };
+  const iocr = { setData: async (o) => { calls.push(['set', JSON.parse(o.json), o.last]); }, getData: async () => ({ hist: JSON.stringify([[t0 - 20 * 60000, 150], [t0 - 5 * 60000, 160]]), trend: 4, session: '', persistSet: getN++ ? '' : '1' }), runNow: async () => { calls.push(['run']); } };
   const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok' };
   const w = boot({ cfg, libre: { email: 'a@b.es', password: 'x' }, kit: { sensorT: t0 - 13.2 * D, sensorDays: '14', rapidT: 0, basalT: 0 }, bg: { on: '1', missed: '1', low: '0' } }, (win) => {
     win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : n === 'Iocrino' ? iocr : null) };
@@ -411,7 +411,8 @@ async function v011() {
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // Lo leído con la app cerrada entra en el historial; y se manda la config a la parte nativa
   assert.ok(st.hist.some((p) => p[1] === 160)); assert.strictEqual(st.now.v, '160');
-  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true && set[1].persist === false);
+  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true && set[1].persist === true); assert.strictEqual(st.bg.persist, '1');
+  st.bg.persist = '0';
   // Sensor a punto de acabar: aviso en Ahora y avisos programados
   assert.ok(vt().includes('Sensor')); assert.ok(sched.some((n) => n.id === 7301));
   // Comida grasa detectada sola + aviso a las 3 h

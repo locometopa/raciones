@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.15.0';
+  var VERSION = '0.16.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -1059,6 +1059,7 @@
       if (h.length) { addHist(h); var l = h[h.length - 1]; if (!S.now.t || l[0] > S.now.t) S.now = { v: String(l[1]), trend: +r.trend || 0, t: l[0], src: 'libre' }; }
       if (ss && ss.token && (!S.libre.session || ss.token !== S.libre.session.token)) S.libre.session = ss;
       save();
+      if (r.persistSet === '1' || r.persistSet === '0') { S.bg.persist = r.persistSet; save(); }
       if (r.action) doAction(r.action);
     } catch (e) { /* nada */ }
   }
@@ -1084,7 +1085,7 @@
       (native ? '<div class="row" style="margin-top:10px"><button data-act="bgtest">Probar ahora</button></div>' : '') +
       '<details class="how"><summary>Poner el widget en la pantalla de inicio</summary><ol><li>Mantén pulsado un hueco vacío de la pantalla de inicio.</li><li>Toca <b>Widgets</b>.</li><li>Busca <b>iocrino</b> y arrastra «Glucosa» a la pantalla.</li></ol><p>Hay cinco: 1x1, 2x1, 2x1 con minigráfica, 1x2 vertical y 4x2 con gráfica y botones. Muestran la última glucosa, la flecha y la hora; tócalos para abrir la app.</p></details>' +
       '<details class="how"><summary>Ver la glucosa con el móvil bloqueado (Samsung)</summary><p>Los widgets de la pantalla de bloqueo de Samsung («Añadir widgets») solo admiten apps de Samsung. Tienes dos caminos:</p><ol>' +
-      '<li><b>Glucosa fija</b> (arriba, «Sí»): sale como notificación en la pantalla de bloqueo y en la Always On Display, y con el número en la barra de estado. Se actualiza con cada lectura.</li>' +
+      '<li><b>Glucosa fija</b> (arriba, «Sí»): sale como notificación en la pantalla de bloqueo y en la Always On Display, y con el número en la barra de estado. Se actualiza con cada lectura. Para encenderla y apagarla sin abrir la app, añade el botón <b>«Glucosa fija»</b> a los ajustes rápidos (baja la barra con dos dedos → lápiz o ⋮ → Editar botones), o usa «Quitar de la barra» en la propia notificación.</li>' +
       '<li><b>Good Lock → LockStar</b> (gratis, de Samsung, en Galaxy Store): permite poner cualquier widget en la pantalla de bloqueo, también los de iocrino.</li></ol>' +
       '<p>Para que la notificación se vea completa con el móvil bloqueado: Ajustes → Pantalla de bloqueo → Notificaciones → «Mostrar contenido».</p></details>' +
       '<details class="how"><summary>Si no lee con la app cerrada</summary><p>En Ajustes de Android → Aplicaciones → iocrino → Batería, elige <b>Sin restricciones</b>. En Samsung, quítala también de «Aplicaciones en suspensión».</p></details></section>';
