@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.14.0';
+  var VERSION = '0.15.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -196,6 +196,8 @@
   function vMeal() {
     var m = S.meal, slot = curSlot(), h = stripHTML();
     h += '<div class="chips slots">' + SLOTS.map(function (s) { return '<button class="chip' + (s[0] === slot ? ' on' : '') + '" data-act="slot" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
+    var stp = m.items.length ? 2 : 1;
+    h += '<ol class="steps">' + ['Añade lo que comes', 'Revisa las cantidades', 'Registra la dosis'].map(function (t, j) { return '<li class="' + (j + 1 < stp ? 'done' : j + 1 === stp ? 'on' : '') + '"><span>' + (j + 1) + '</span>' + t + '</li>'; }).join('') + '</ol>';
     h += '<section class="card"><h2>¿Qué vas a comer?</h2>' +
       '<div class="sbox">' + ICON.search + '<input id="qi" data-f="qi" type="search" placeholder="Busca: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"></div><div id="qr" class="list"></div>' +
       '<div class="lab">O añádelo de otra forma</div><div class="ways">' +
@@ -226,7 +228,8 @@
     var c = compute();
     renderSum(c);
     var res = $('#res'); if (!res) return;
-    var r = c.r, h = '';
+    res.hidden = !S.meal.items.length; if (res.hidden) { res.innerHTML = ''; return; }
+    var r = c.r, h = '', detail = '';
     S.meal.items.forEach(function (it, i) { var el = $('#hc' + i); if (el) el.textContent = '= ' + fmt(Calc.carbsOf(it), 1) + ' g HC'; });
     var st = $('.gstrip'); if (st) st.outerHTML = stripHTML();
 
@@ -239,12 +242,7 @@
     } else if (!r.ok) {
       h += '<div class="note info">Para calcular la dosis faltan tus pautas: ratio de ' + esc(slotName(c.slot).toLowerCase()) + ', factor de sensibilidad y glucosa objetivo.</div><button data-act="goto" data-v="ajustes">Ir a Ajustes</button>';
     } else {
-      h += '<table class="bk">' +
-        '<tr><td>Comida<small>' + fmt(c.carbs, 1) + ' g ÷ ' + fmt(c.gpu, 1) + ' g por unidad</small></td><td>' + fu(r.food) + '</td></tr>' +
-        '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + (r.trendAdj ? ' ' + (r.trendAdj > 0 ? '+' : '−') + ' ' + Math.abs(r.trendAdj) + ' por la flecha' : '') + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
-        '<tr><td>Insulina activa<small>' + (num(S.cfg.dia) > 0 ? 'quedan ' + fu(r.iob) + ' de dosis registradas' : 'duración de la insulina sin configurar') + '</small></td><td>' + (r.iobUsed > 0 ? '−' + fu(r.iobUsed) : '—') + '</td></tr></table>';
       h += '<div class="dose"><span class="mut">Sugerencia</span><b>' + fu(r.total) + '</b><span class="mut">sin redondear: ' + fmt(r.raw, 2) + '</span></div>';
-      if (S.cfg.rapid === 'Fiasp') h += '<p class="fine">Fiasp: su prospecto permite pincharla desde 2 minutos antes de empezar a comer hasta 20 minutos después; el documento de la Dra. Barrio aconseja esperar 5–10 minutos entre el pinchazo y la comida.</p>';
       var lastR = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
       if (r.hasGlucose && r.corr > 0 && lastR && Date.now() - lastR.t < 2 * 3600e3) h += '<div class="note warn">Tu última dosis fue hace ' + Math.round((Date.now() - lastR.t) / 60000) + ' min. Se aconseja no poner corrección hasta pasadas 2 horas: lo que queda activo ya se descuenta, pero vigila.</div>';
       var ex = lastExercise(); if (ex && Date.now() - ex.t < 6 * 3600e3) h += '<div class="note warn">Hiciste ejercicio ' + agoText(ex.t) + ' (' + esc(ex.what) + ', ' + ex.min + ' min). Puede que la glucosa baje más de lo normal durante horas, incluso por la noche. El cálculo no lo tiene en cuenta: si tu equipo te dijo cuánto reducir, aplícalo.</div>';
@@ -258,7 +256,14 @@
       else if (r.hasGlucose && (tr === 4 || tr === 5)) h += '<div class="note warn">La flecha indica que la glucosa está ' + TREND[tr][1].toLowerCase() + '. El cálculo no lo tiene en cuenta.</div>';
       if (r.hasGlucose && S.now.t && Date.now() - S.now.t > STALE_MS) h += '<div class="note warn">La glucosa es de hace ' + Math.round((Date.now() - S.now.t) / 60000) + ' min. Vuelve a medirla antes de decidir.</div>';
     }
+
+      detail = '<table class="bk">' +
+        '<tr><td>Comida<small>' + fmt(c.carbs, 1) + ' g ÷ ' + fmt(c.gpu, 1) + ' g por unidad</small></td><td>' + fu(r.food) + '</td></tr>' +
+        '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + (r.trendAdj ? ' ' + (r.trendAdj > 0 ? '+' : '−') + ' ' + Math.abs(r.trendAdj) + ' por la flecha' : '') + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
+        '<tr><td>Insulina activa<small>' + (num(S.cfg.dia) > 0 ? 'quedan ' + fu(r.iob) + ' de dosis registradas' : 'duración de la insulina sin configurar') + '</small></td><td>' + (r.iobUsed > 0 ? '−' + fu(r.iobUsed) : '—') + '</td></tr></table>';
+      if (S.cfg.rapid === 'Fiasp') detail += '<p class="fine">Fiasp: su prospecto permite pincharla desde 2 minutos antes de empezar a comer hasta 20 minutos después; el documento de la Dra. Barrio aconseja esperar 5–10 minutos entre el pinchazo y la comida.</p>';
     h += '<button class="pri big" data-act="log" style="margin-top:12px">Registrar lo que me pongo</button><div class="row" style="justify-content:space-between"><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar plato</button></div>';
+    h += detail;
     h += '<details class="how"><summary>¿Cómo se calcula?</summary><ol>' +
       '<li><b>Hidratos</b>: gramos de cada alimento × sus hidratos por 100 g ÷ 100. Una ración son 10 g de hidratos.</li>' +
       '<li><b>Comida</b>: ' + (S.cfg.ratioMode === 'r' ? 'raciones × tu ratio de la franja (unidades por ración)' : 'hidratos ÷ los gramos que cubre 1 unidad en esa franja') + '.</li>' +
@@ -277,7 +282,7 @@
     document.body.classList.toggle('hassum', show);
     if (!show) return;
     c = c || compute();
-    sumBar.innerHTML = '<span><b>' + fmt(c.carbs, 1) + ' g</b> · ' + fmt(c.carbs / Calc.RACION, 1) + ' rac.</span><span class="sd">' +
+    sumBar.innerHTML = '<span><b>' + fmt(c.carbs, 1) + ' g</b> · ' + fmt(c.carbs / Calc.RACION, 1) + ' rac.<small>Ver dosis y registrar ›</small></span><span class="sd">' +
       (c.r.ok ? fu(c.r.total) : c.r.reason === 'hypo' ? 'Glucosa baja' : 'Faltan pautas') + '</span>';
   }
 
@@ -1314,7 +1319,7 @@
       case 'photocam': $('#cam').click(); break;
       case 'photogal': $('#gal').click(); break;
       case 'photoadd':
-        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); toast('Añadido: revisa las cantidades'); }
+        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); var it0 = $('#items'); if (it0 && it0.scrollIntoView) it0.parentNode.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('Añadido. Revisa las cantidades y luego toca la barra verde para registrar'); }
         break;
       case 'useplate': usePlate(i); break;
       case 'saveplate': openDlg('<h3>Guardar como plato</h3><label>Nombre del plato</label><input id="pn" placeholder="Desayuno de diario…"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="platesave">Guardar</button></div>'); break;
