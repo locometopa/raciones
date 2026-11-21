@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.3.0';
+  var VERSION = '0.4.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -23,7 +23,7 @@
     return {
       cfg: { ratioMode: 'r', ratios: { desayuno: '', comida: '', merienda: '', cena: '' }, isf: '', target: '', dia: '', iobMode: 'total', step: '1', maxBolus: '', hypo: '70', rangeLow: '70', rangeHigh: '180', alto: '250' },
       libre: { email: '', password: '', version: Libre.DEFAULT_VERSION, session: null, graph: [] },
-      ai: { on: '0', key: '', model: Vision.DEFAULT_MODEL },
+      ai: { on: '0', provider: 'claude', keys: {}, models: {}, url: '' },
       now: { v: '', trend: 0, t: null, src: '' },
       custom: [], plates: [], log: [],
       meal: { items: [], slot: '' }
@@ -36,6 +36,12 @@
     d.cfg.ratios = ratios;
     ['custom', 'plates', 'log'].forEach(function (k) { if (Array.isArray(j[k])) d[k] = j[k]; });
     if (!Array.isArray(d.meal.items)) d.meal.items = [];
+    ['keys', 'models'].forEach(function (k) { if (!d.ai[k] || typeof d.ai[k] !== 'object') d.ai[k] = {}; });
+    if (!Vision.PROVIDERS[d.ai.provider]) d.ai.provider = 'claude';
+    // 0.2–0.3 guardaban una sola clave, de Claude
+    if (j.ai && j.ai.key && !d.ai.keys.claude) d.ai.keys.claude = j.ai.key;
+    if (j.ai && j.ai.model && !d.ai.models.claude && j.ai.model !== 'claude-sonnet-5-5') d.ai.models.claude = j.ai.model;
+    delete d.ai.key; delete d.ai.model;
     if (!Array.isArray(d.libre.graph)) d.libre.graph = [];
     // 0.2 guardaba la glucosa dentro de la comida
     if (j.meal && j.meal.glucose && !(j.now && j.now.v)) d.now = { v: String(j.meal.glucose), trend: +j.meal.trend || 0, t: j.meal.gt || null, src: j.meal.gsrc || 'manual' };
@@ -65,7 +71,8 @@
     var fallback = function () { openDlg('<h3>Copiar</h3><p class="mut">Mantén pulsado sobre el texto para copiarlo.</p><textarea rows="8" readonly>' + esc(text) + '</textarea><div class="acts"><button class="pri" data-act="close">Cerrar</button></div>'); };
     try { navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fallback); } catch (e) { fallback(); }
   }
-  function aiOn() { return S.ai.on === '1' && !!S.ai.key; }
+  function aiCfg() { var p = S.ai.provider; return { provider: p, key: S.ai.keys[p] || '', model: S.ai.models[p] || Vision.PROVIDERS[p].model, url: S.ai.url }; }
+  function aiOn() { var c = aiCfg(); return S.ai.on === '1' && (Vision.PROVIDERS[c.provider].needsUrl ? !!c.url && !!c.model : !!c.key); }
   function libreOn() { return native && !!S.libre.email && !!S.libre.password; }
 
   // ---------- glucosa actual ----------
@@ -189,6 +196,13 @@
       if (r.hasGlucose && S.now.t && Date.now() - S.now.t > STALE_MS) h += '<div class="note warn">La glucosa es de hace ' + Math.round((Date.now() - S.now.t) / 60000) + ' min. Vuelve a medirla antes de decidir.</div>';
     }
     h += '<div class="row" style="margin-top:10px"><button class="pri" data-act="log">Registrar</button><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar</button></div>';
+    h += '<details class="how"><summary>¿Cómo se calcula?</summary><ol>' +
+      '<li><b>Hidratos</b>: gramos de cada alimento × sus hidratos por 100 g ÷ 100. Una ración son 10 g de hidratos.</li>' +
+      '<li><b>Comida</b>: ' + (S.cfg.ratioMode === 'r' ? 'raciones × tu ratio de la franja (unidades por ración)' : 'hidratos ÷ los gramos que cubre 1 unidad en esa franja') + '.</li>' +
+      '<li><b>Corrección</b>: (glucosa − objetivo) ÷ factor de sensibilidad. Si estás por debajo del objetivo sale negativa y resta.</li>' +
+      '<li><b>Insulina activa</b>: lo que queda de las dosis registradas aquí, bajando en línea recta durante la duración de tu insulina. Se resta ' + (S.cfg.iobMode === 'corr' ? 'solo de la corrección' : 'de toda la dosis') + '.</li>' +
+      '<li><b>Ajustes finales</b>: se redondea a lo que dosifica tu pluma, nunca sale negativa, no pasa de tu tope y no se sugiere nada por debajo de ' + fmt(num(S.cfg.hypo) || 70, 0) + ' mg/dL.</li></ol>' +
+      '<p>No tiene en cuenta la flecha, la grasa o proteína de la comida, el ejercicio ni la insulina que no hayas registrado aquí.</p></details>';
     h += '<p class="fine">Cálculo orientativo hecho con las pautas que tú has puesto. La decisión de la dosis es tuya y de tu equipo de diabetes.</p>';
     res.innerHTML = h;
   }
@@ -297,7 +311,7 @@
     openDlg('<h3>Foto del plato</h3><p class="mut">Analizando la foto…</p>');
     try {
       var b64 = await Vision.fileToJpegBase64(file);
-      showEstimate(await Vision.estimate(b64, hint, S.ai));
+      showEstimate(await Vision.estimate(b64, hint, aiCfg()));
     } catch (e) { msgDlg('No se pudo analizar la foto', e && e.message ? e.message : 'Error desconocido'); }
   }
   function showEstimate(est) {
@@ -368,11 +382,16 @@
       field('Versión que se anuncia a LibreLinkUp (avanzado)', 'libre.version', '') +
       (native ? '<div class="row" style="margin-top:10px"><button data-act="libretest">Probar lectura</button></div>' : '<p class="fine">La lectura solo funciona en la app instalada; desde un navegador no es posible.</p>') +
       '<p class="fine">El correo y la contraseña se guardan solo en este dispositivo.</p></section>';
-    h += '<section class="card"><h2>Foto del plato con IA (opcional)</h2><p class="mut">Si lo activas, aparece el botón «Foto» en Comida. La foto se envía a la API de Claude (Anthropic), que propone alimentos y gramos aproximados para que los revises. Necesita internet y una clave de API de pago (console.anthropic.com).</p>' +
+    var pv = S.ai.provider, P = Vision.PROVIDERS[pv];
+    h += '<section class="card"><h2>Foto del plato con IA (opcional)</h2><p class="mut">Si lo activas, aparece el botón «Foto» en Comida. La foto se envía al servicio que elijas, que propone alimentos y gramos aproximados para que los revises. Necesita internet y una clave de ese servicio.</p>' +
       sel('Estimación por foto', 'ai.on', [['0', 'Desactivada'], ['1', 'Activada']]) +
-      field('Clave de la API', 'ai.key', 'type="password" autocomplete="off"') +
-      field('Modelo (avanzado)', 'ai.model', '') +
-      '<p class="fine">La clave se guarda solo en este dispositivo y no entra en la copia de seguridad.</p></section>';
+      sel('Servicio', 'ai.provider', Object.keys(Vision.PROVIDERS).map(function (k) { return [k, Vision.PROVIDERS[k].name]; })) +
+      '<div class="note info"><b>Cómo conseguir la clave</b><ol style="margin:6px 0 0;padding-left:20px">' + P.steps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' +
+      '<p style="margin:8px 0 0"><a href="' + esc(P.keyUrl) + '" target="_blank" rel="noopener" style="color:var(--acc)">' + esc(P.keyUrl.replace('https://', '')) + '</a></p></div>' +
+      (P.needsUrl ? field('Dirección del servicio', 'ai.url', 'type="url" autocomplete="off" placeholder="https://openrouter.ai/api/v1"') : '') +
+      field('Clave de ' + esc(P.name) + (P.needsUrl ? ' (si hace falta)' : ''), 'ai.keys.' + pv, 'type="password" autocomplete="off"') +
+      field('Modelo' + (P.model ? ' (vacío = ' + esc(P.model) + ')' : ''), 'ai.models.' + pv, 'autocomplete="off" placeholder="' + esc(P.model || 'nombre del modelo') + '"') +
+      '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
     h += '<section class="card"><h2>Copia de seguridad</h2><p class="mut">Los datos viven solo en este dispositivo. Guarda una copia de vez en cuando.</p><div class="row"><button data-act="backup">Copiar copia de seguridad</button><button data-act="restore">Restaurar…</button></div></section>';
@@ -424,7 +443,13 @@
 
   document.addEventListener('input', function (e) {
     var t = e.target; if (!t.dataset) return;
-    if (t.dataset.s) { setPath(t.dataset.s, t.value.trim ? t.value.trim() : t.value); if (t.dataset.s.indexOf('libre.') === 0) S.libre.session = null; save(); return; }
+    if (t.dataset.s) {
+      setPath(t.dataset.s, t.value.trim ? t.value.trim() : t.value);
+      if (t.dataset.s.indexOf('libre.') === 0) S.libre.session = null;
+      save();
+      if (t.dataset.s === 'ai.provider') { var y = window.scrollY; render(); window.scrollTo(0, y); }
+      return;
+    }
     var f = t.dataset.f; if (!f) return;
     if (f === 'grams' || f === 'hcDirect') { var it = S.meal.items[+t.dataset.i]; if (it) { it[f] = t.value; save(); renderRes(); } }
     else if (f === 'qi') renderSearch(t.value);
@@ -496,12 +521,12 @@
       case 'dellog': confirmDlg('¿Borrar este registro? Dejará de contar como insulina activa.', function () { S.log = S.log.filter(function (x) { return String(x.t) !== b.dataset.t; }); save(); render(); }); break;
       case 'csv': copyText(csv(), 'Registro copiado'); break;
       case 'delcustom': confirmDlg('¿Borrar «' + S.custom[i].name + '» de tus alimentos?', function () { S.custom.splice(i, 1); save(); render(); }); break;
-      case 'backup': { var copy = JSON.parse(JSON.stringify(S)); copy.libre.password = ''; copy.libre.session = null; copy.ai.key = ''; copyText(JSON.stringify(copy), 'Copia de seguridad copiada (sin contraseñas ni claves)'); break; }
+      case 'backup': { var copy = JSON.parse(JSON.stringify(S)); copy.libre.password = ''; copy.libre.session = null; copy.ai.keys = {}; copyText(JSON.stringify(copy), 'Copia de seguridad copiada (sin contraseñas ni claves)'); break; }
       case 'restore': openDlg('<h3>Restaurar copia</h3><p class="mut">Pega aquí el texto de una copia de seguridad. Sustituye a los datos actuales.</p><textarea id="rs" rows="6"></textarea><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="restoredo">Restaurar</button></div>'); break;
       case 'restoredo': {
         try {
           var j = JSON.parse($('#rs').value); if (!j || typeof j !== 'object' || !j.cfg) throw 0;
-          var pw = S.libre.password, ak = S.ai.key; S = merge(defaults(), j); if (!S.libre.password) S.libre.password = pw; if (!S.ai.key) S.ai.key = ak; S.libre.session = null;
+          var pw = S.libre.password, ak = S.ai.keys; S = merge(defaults(), j); if (!S.libre.password) S.libre.password = pw; Object.keys(ak).forEach(function (k) { if (!S.ai.keys[k]) S.ai.keys[k] = ak[k]; }); S.libre.session = null;
           save(); closeDlg(); render(); toast('Copia restaurada');
         } catch (err) { toast('Ese texto no es una copia válida'); }
         break;

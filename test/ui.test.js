@@ -118,7 +118,14 @@ click($('[data-tab="registro"]')); assert.ok(text().includes('12 U')); assert.ok
 
 // Foto con IA: desactivada de serie
 click($('[data-tab="comida"]')); assert.ok(!act('photo'));
-click($('[data-tab="ajustes"]')); type($('[data-s="ai.on"]'), '1'); type($('[data-s="ai.key"]'), 'clave-de-prueba');
+click($('[data-tab="ajustes"]')); type($('[data-s="ai.on"]'), '1');
+// Cambiar de servicio cambia la ayuda y la clave que se pide
+type($('[data-s="ai.provider"]'), 'gemini');
+assert.ok(text().includes('aistudio.google.com')); assert.ok($('[data-s="ai.keys.gemini"]'));
+click($('[data-tab="comida"]')); assert.ok(!act('photo'), 'sin clave no sale'); click($('[data-tab="ajustes"]'));
+type($('[data-s="ai.provider"]'), 'custom'); assert.ok($('[data-s="ai.url"]'));
+type($('[data-s="ai.provider"]'), 'deepseek'); assert.ok(text().includes('platform.deepseek.com'));
+type($('[data-s="ai.keys.deepseek"]'), 'clave-de-prueba');
 assert.ok(text().includes('Arroz de prueba'), 'platos en Ajustes');
 click($('[data-tab="comida"]')); assert.ok(act('photo'));
 const est = w.Vision.parse({ content: [{ type: 'tool_use', input: { notas: 'No se ve si hay salsa', alimentos: [
@@ -141,6 +148,9 @@ assert.ok(!$('#view img'));
 // Persistencia
 const saved = JSON.parse(w.localStorage.getItem('raciones.v1'));
 assert.strictEqual(saved.plates.length, 1); assert.strictEqual(saved.now.v, '180');
+assert.strictEqual(saved.ai.provider, 'deepseek'); assert.strictEqual(saved.ai.keys.deepseek, 'clave-de-prueba');
+// Explicación del cálculo visible en el resultado
+click($('[data-tab="comida"]')); assert.ok($('details.how')); assert.ok($('details.how').textContent.includes('factor de sensibilidad'));
 w.close();
 
 // Gráfica del Libre guardada y migración desde 0.2
@@ -152,8 +162,9 @@ assert.ok(d.querySelector('.gchart polyline.gline'));
 assert.ok(d.querySelector('.gcard.in')); assert.ok(d.querySelector('#view').textContent.includes('Libre · hace 2 min'));
 assert.ok(d.querySelector('#view').textContent.includes('Bajando rápido'));
 w.close();
-w = boot({ cfg: {}, meal: { items: [], glucose: '140', trend: 3, gt: now - 60000, gsrc: 'manual' } });
+w = boot({ cfg: {}, meal: { items: [], glucose: '140', trend: 3, gt: now - 60000, gsrc: 'manual' }, ai: { on: '1', key: 'vieja', model: 'claude-sonnet-5-5' } });
 assert.strictEqual(w.__raciones.state().now.v, '140'); assert.strictEqual(w.__raciones.state().meal.glucose, undefined);
+assert.strictEqual(w.__raciones.state().ai.keys.claude, 'vieja'); assert.strictEqual(w.__raciones.state().ai.provider, 'claude'); assert.strictEqual(w.__raciones.state().ai.key, undefined);
 // Lectura antigua: gris
 w.close();
 w = boot({ cfg: {}, now: { v: '140', trend: 3, t: now - 3 * 3600e3, src: 'manual' } });

@@ -19,6 +19,12 @@ if (!xml.includes('android.permission.CAMERA')) {
   fs.writeFileSync(mf, xml);
 }
 
+// Permite http:// sin cifrar (solo hace falta para una IA propia en casa, p. ej. Ollama en http://192.168.1.180:11434).
+if (!xml.includes('usesCleartextTraffic')) {
+  xml = xml.replace('<application', '<application android:usesCleartextTraffic="true"');
+  fs.writeFileSync(mf, xml);
+}
+
 // Versión: la de package.json. 0.1.0 → código 100; 1.2.3 → 10203.
 const v = require('../package.json').version;
 const [a, b, c] = v.split('.').map(Number);

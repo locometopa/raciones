@@ -1,10 +1,10 @@
 {
   "name": "raciones",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Calculadora personal de raciones de hidratos y bolo, con lectura del sensor Libre",
   "scripts": {
-    "test": "node test/calc.test.js && node test/libre.test.js && node test/chart.test.js && node test/ui.test.js",
+    "test": "node test/calc.test.js && node test/libre.test.js && node test/chart.test.js && node test/vision.test.js && node test/ui.test.js",
     "android": "node scripts/android.js"
   },
   "dependencies": {
