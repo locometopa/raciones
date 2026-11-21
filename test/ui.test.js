@@ -296,6 +296,7 @@ w.close();
     w.close();
     await v09();
     v010();
+    await v011();
     console.log('interfaz: todas las pruebas pasan');
   })().catch((e) => { console.error(e); process.exit(1); });
 }
@@ -389,6 +390,43 @@ function v010() {
   k(q('[data-act="close"]'));
   // Glucosa baja: primero tratar
   st.now = { v: '62', trend: 2, t: Date.now(), src: 'manual' }; k(q('[data-tab="ahora"]'));
-  assert.ok(q('.coach.bad')); assert.ok(q('.coach').textContent.includes('trata la bajada'));
+  assert.ok(q('.coach.bad'), q('.coach') && q('.coach').outerHTML + vt().slice(0,300)); assert.ok(/trata la bajada|azúcar/.test(q('.coach').textContent));
+  w.close();
+}
+
+// ---- 0.11: grasa, ejercicio, material y parte nativa ----
+async function v011() {
+  const H = 3600e3, D = 864e5, t0 = Date.now(), sched = [], calls = [];
+  const notif = { registerActionTypes: async () => {}, addListener: () => Promise.resolve({ remove() {} }), cancel: async () => {}, checkPermissions: async () => ({ display: 'granted' }), requestPermissions: async () => ({ display: 'granted' }), schedule: async (o) => { o.notifications.forEach((n) => sched.push(n)); } };
+  const iocr = { setData: async (o) => { calls.push(['set', JSON.parse(o.json), o.last]); }, getData: async () => ({ hist: JSON.stringify([[t0 - 20 * 60000, 150], [t0 - 5 * 60000, 160]]), trend: 4, session: '' }), runNow: async () => { calls.push(['run']); } };
+  const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok' };
+  const w = boot({ cfg, libre: { email: 'a@b.es', password: 'x' }, kit: { sensorT: t0 - 13.2 * D, sensorDays: '14', rapidT: 0, basalT: 0 }, bg: { on: '1', missed: '1', low: '0' } }, (win) => {
+    win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : n === 'Iocrino' ? iocr : null) };
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 60));
+  await tick(); await tick();
+  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  // Lo leído con la app cerrada entra en el historial; y se manda la config a la parte nativa
+  assert.ok(st.hist.some((p) => p[1] === 160)); assert.strictEqual(st.now.v, '160');
+  const set = calls.find((c) => c[0] === 'set'); assert.ok(set && set[1].on === true && set[1].email === 'a@b.es' && set[1].missed === true);
+  // Sensor a punto de acabar: aviso en Ahora y avisos programados
+  assert.ok(vt().includes('Sensor')); assert.ok(sched.some((n) => n.id === 7301));
+  // Comida grasa detectada sola + aviso a las 3 h
+  st.now = { v: '120', trend: 3, t: Date.now(), src: 'manual' };
+  st.meal.items = [{ name: 'Pizza margarita', hc100: 30, grams: '200' }];
+  k(q('[data-tab="comida"]')); assert.ok(vt().includes('unidades grasa-proteína'));
+  k(q('[data-act="log"]')); q('#ru').value = '6'; k(q('[data-act="logsave"]')); await tick();
+  assert.ok(st.log.slice(-1)[0].fat); assert.ok(sched.some((n) => n.id === 7200));
+  // Ejercicio
+  k(q('[data-tab="registro"]')); k(q('[data-act="exercise"]')); k(q('#exw [data-act="exwhat"]:nth-child(2)')); q('#exm').value = '50'; k(q('[data-act="exsave"]'));
+  const ex = st.log.find((e) => e.ins === 'ejercicio'); assert.ok(ex && ex.what === 'Correr' && ex.min === 50);
+  assert.ok(q('#dlg').textContent.includes('antes de dormir')); k(q('[data-act="close"]'));
+  assert.ok(vt().includes('Ejercicio'));
+  st.meal.items = [{ name: 'Pan', hc100: 50, grams: '40' }]; k(q('[data-tab="comida"]')); assert.ok(vt().includes('Hiciste ejercicio'));
+  // Ajustes: material y segundo plano
+  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('Con la app cerrada'));
+  k(q('[data-act="kitnew"][data-v="rapidT"]')); k(q('[data-act="yes"]')); assert.ok(st.kit.rapidT > 0); await tick(); assert.ok(sched.some((n) => n.id === 7310));
+  k(q('[data-act="bgtest"]')); await tick(); assert.ok(calls.some((c) => c[0] === 'run'));
   w.close();
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_desc">Tu última glucosa del Libre, con flecha y hora</string>
+    <string name="widget_label">Glucosa</string>
+</resources>

@@ -33,6 +33,40 @@ if (!xml.includes('usesCleartextTraffic')) {
   fs.writeFileSync(mf, xml);
 }
 
+// Parte nativa propia: lectura del Libre con la app cerrada, widget y avisos (resources/android/java)
+const pkgDir = path.join(root, 'android/app/src/main/java/es/locometopa/raciones');
+for (const f of fs.readdirSync(path.join(root, 'resources/android/java'))) fs.copyFileSync(path.join(root, 'resources/android/java', f), path.join(pkgDir, f));
+fs.writeFileSync(path.join(pkgDir, 'MainActivity.java'), `package es.locometopa.raciones;
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(IocrinoPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}
+`);
+xml = fs.readFileSync(mf, 'utf8');
+if (!xml.includes('GlucoseWidget')) {
+  xml = xml.replace('</application>', `    <receiver android:name=".GlucoseWidget" android:exported="false" android:label="@string/widget_label">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_glucose_info" />
+        </receiver>
+    </application>`);
+  if (!xml.includes('POST_NOTIFICATIONS')) xml = xml.replace('<uses-permission android:name="android.permission.INTERNET" />', '<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />');
+  fs.writeFileSync(mf, xml);
+}
+const ag = path.join(root, 'android/app/build.gradle');
+let agt = fs.readFileSync(ag, 'utf8');
+if (!agt.includes('work-runtime')) {
+  agt = agt.replace(/dependencies \{/, "dependencies {\n    implementation 'androidx.work:work-runtime:2.10.0'");
+  if (!agt.includes('work-runtime')) throw new Error('No se pudo añadir WorkManager');
+  fs.writeFileSync(ag, agt);
+}
+
 // Versión: la de package.json. 0.1.0 → código 100; 1.2.3 → 10203.
 const v = require('../package.json').version;
 const [a, b, c] = v.split('.').map(Number);

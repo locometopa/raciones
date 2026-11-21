@@ -95,7 +95,7 @@ var Learn = (function () {
       var changedAt = (o.changes || []).filter(function (c) { return c.slot === k; }).reduce(function (m, c) { return Math.max(m, c.t); }, 0);
       var from = Math.max(since, changedAt);
       var all = (log || []).filter(function (e) { return isRapid(e) && e.slot === k && e.carbs > 0 && e.post && !e.post.none && e.t >= from; });
-      var clean = all.filter(function (e) { return !log.some(function (x) { return x !== e && isRapid(x) && x.u > 0 && x.t > e.t && x.t < e.t + 3 * H; }); });
+      var clean = all.filter(function (e) { return !e.fat && !log.some(function (x) { return (x !== e && isRapid(x) && x.u > 0 && x.t > e.t && x.t < e.t + 3 * H) || (x.ins === 'ejercicio' && x.t > e.t - 4 * H && x.t < e.t + 3 * H); }); });
       var lows = all.filter(function (e) { return e.post.min < low || log.some(function (x) { return x.ins === 'hipo' && x.t > e.t && x.t < e.t + 4 * H; }); }).length;
       var est = [];
       if (isf > 0) clean.forEach(function (e) {
