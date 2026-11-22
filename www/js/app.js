@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.22.1';
+  var VERSION = '0.23.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -331,8 +331,9 @@
     var m = S.meal, slot = curSlot(), h = stripHTML();
     h += '<div class="chips slots">' + SLOTS.map(function (s) { return '<button class="chip' + (s[0] === slot ? ' on' : '') + '" data-act="slot" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
     var stp = m.items.length ? 2 : 1;
-    h += '<ol class="steps">' + ['Añade lo que comes', 'Revisa las cantidades', 'Registra la dosis'].map(function (t, j) { return '<li class="' + (j + 1 < stp ? 'done' : j + 1 === stp ? 'on' : '') + '"><span>' + (j + 1) + '</span>' + t + '</li>'; }).join('') + '</ol>';
-    h += '<section class="card"><h2>¿Qué vas a comer?</h2>' +
+    h += '<ol class="steps">' + ['Elige lo que comes', 'Ajusta las cantidades', 'Pínchate y regístralo'].map(function (t, j) { return '<li class="' + (j + 1 < stp ? 'done' : j + 1 === stp ? 'on' : '') + '"><span>' + (j + 1) + '</span>' + t + '</li>'; }).join('') + '</ol>';
+    h += habitsHTML(slot);
+    h += '<section class="card"><h2>' + (habits(slot).favs.length ? '¿Algo más? Búscalo' : '¿Qué vas a comer?') + '</h2>' +
       '<div class="sbox">' + ICON.search + '<input id="qi" data-f="qi" type="search" placeholder="Busca: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"></div><div id="qr" class="list"></div>' +
       '<div class="lab">O añádelo de otra forma</div><div class="ways">' +
       (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') + way('label', ICON.tag, 'Etiqueta', 'Foto a la tabla del envase') : '') +
@@ -349,7 +350,7 @@
         (direct ? 'hidratos que has puesto tú' : unitOf(it) === 'ud' ? fmt(num(it.hc100) || 0, 1) + ' g de HC por unidad' : fmt(num(it.hc100) || 0, 1) + ' g de HC por cada 100 ' + (unitOf(it) === 'ml' ? 'ml' : 'g')) +
         (it.est ? ' · <span class="estm">estimado por IA</span>' : '') + (it.pre ? ' · <span class="estm">' + (it.pre === 'last' ? 'cantidad de la última vez' : 'ración normal') + ', cámbiala si no es así</span>' : '') + '</small></div>' +
         '<button class="x" data-act="del" data-i="' + i + '" aria-label="Quitar ' + esc(it.name) + '">✕</button></div>' +
-        '<div class="it-qty"><label class="qty"><input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="0" aria-label="' + (direct ? 'Gramos de hidratos' : 'Cantidad de ' + esc(it.name)) + '"><span>' + (direct ? 'g de HC' : qtyWord(unitOf(it))) + '</span></label>' +
+        '<div class="it-qty">' + (direct ? '' : '<button class="step" data-act="qminus" data-i="' + i + '" aria-label="Menos">−</button>') + '<label class="qty"><input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="0" aria-label="' + (direct ? 'Gramos de hidratos' : 'Cantidad de ' + esc(it.name)) + '"><span>' + (direct ? 'g de HC' : qtyWord(unitOf(it))) + '</span></label>' + (direct ? '' : '<button class="step" data-act="qplus" data-i="' + i + '" aria-label="Más">+</button>') +
         (!direct && it.portion ? '<button class="chip mini" data-act="portion" data-i="' + i + '">' + (unitOf(it) === 'ud' ? 'Normal: ' : 'Ración ') + portionText(it.portion, unitOf(it)) + '</button>' : '') +
         '<span class="hc" id="hc' + i + '"></span></div></div>';
     });
@@ -396,7 +397,8 @@
         '<tr><td>Corrección<small>' + (r.hasGlucose ? '(' + fmt(c.g.v, 0) + (r.trendAdj ? ' ' + (r.trendAdj > 0 ? '+' : '−') + ' ' + Math.abs(r.trendAdj) + ' por la flecha' : '') + ' − ' + fmt(num(S.cfg.target), 0) + ') ÷ ' + fmt(num(S.cfg.isf), 0) : 'sin glucosa') + '</small></td><td>' + (r.hasGlucose ? (r.corr > 0 ? '+' : '') + fu(r.corr) : '—') + '</td></tr>' +
         '<tr><td>Insulina activa<small>' + (num(S.cfg.dia) > 0 ? 'quedan ' + fu(r.iob) + ' de dosis registradas' : 'duración de la insulina sin configurar') + '</small></td><td>' + (r.iobUsed > 0 ? '−' + fu(r.iobUsed) : '—') + '</td></tr></table>';
       if (S.cfg.rapid === 'Fiasp') detail += '<p class="fine">Fiasp: su prospecto permite pincharla desde 2 minutos antes de empezar a comer hasta 20 minutos después; el documento de la Dra. Barrio aconseja esperar 5–10 minutos entre el pinchazo y la comida.</p>';
-    h += '<button class="pri big" data-act="log" style="margin-top:12px">Registrar lo que me pongo</button><div class="row" style="justify-content:space-between"><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar plato</button></div>';
+    h += (r.ok && r.total >= 0 ? '<button class="pri big" data-act="logquick" style="margin-top:12px">Me pongo ' + fu(r.total) + ' y lo registro</button><button class="ghost" data-act="log" style="width:100%">Me pongo otra cantidad</button>' : '<button class="pri big" data-act="log" style="margin-top:12px">Registrar lo que me pongo</button>') +
+      '<div class="row" style="justify-content:space-between"><button data-act="saveplate"' + (S.meal.items.length ? '' : ' disabled') + '>Guardar como plato</button><button class="ghost" data-act="clear">Vaciar plato</button></div>';
     h += detail;
     h += '<details class="how"><summary>¿Cómo se calcula?</summary><ol>' +
       '<li><b>Hidratos</b>: gramos de cada alimento × sus hidratos por 100 g ÷ 100. Una ración son 10 g de hidratos.</li>' +
@@ -468,6 +470,54 @@
     var qi = $('#qi'); if (qi) qi.value = '';
     render();
     toast('Añadido. Añade más alimentos o toca la barra verde para ver la dosis');
+  }
+  /* Lo que sueles comer en esta franja (últimos 60 días) y tu última comida de esa franja, para repetir con un toque. */
+  var SLOTNAME = { desayuno: 'el desayuno', comida: 'la comida', merienda: 'la merienda', cena: 'la cena' };
+  function habits(slot) {
+    var cut = Date.now() - 60 * 864e5, cnt = {}, info = {}, last = null;
+    S.log.forEach(function (e) {
+      if ((e.ins && e.ins !== 'rapida') || !Array.isArray(e.items) || !e.items.length || e.t < cut || e.slot !== slot) return;
+      if (!last || e.t > last.t) last = e;
+      e.items.forEach(function (it) { if (!it || !it.name || it.hcDirect != null) return; cnt[it.name] = (cnt[it.name] || 0) + 1; info[it.name] = it; });
+    });
+    var favs = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; }).slice(0, 8).map(function (n) { return info[n]; });
+    if (favs.length < 4) S.recent.forEach(function (r) { if (favs.length < 6 && !favs.some(function (f) { return f.name === r.name; })) favs.push(r); });
+    return { favs: favs, last: last };
+  }
+  /* Añadir sin preguntar, con la cantidad de la última vez (o la ración normal). */
+  function quickAdd(f) {
+    var q = S.lastQty[f.name] || num(f.grams) || f.portion;
+    if (!(q > 0)) { addFood(f); return; }
+    var ex = S.meal.items.filter(function (x) { return x.name === f.name; })[0];
+    if (ex) { toast(f.name + ' ya está en el plato: cambia la cantidad con − y +'); return; }
+    var it = { name: f.name, hc100: f.hc100, grams: String(q), portion: f.portion || null };
+    if (f.unit && f.unit !== 'g') it.unit = f.unit;
+    S.meal.items.push(it); save(); render();
+    toast('Añadido ' + f.name + ' (' + fmt(q, 0) + ' ' + (f.unit === 'ud' ? 'ud' : f.unit || 'g') + ')');
+  }
+  function repeatLast(slot) {
+    var hb = habits(slot); if (!hb.last) return;
+    S.meal.items = hb.last.items.map(function (it) { var c = JSON.parse(JSON.stringify(it)); var q = S.lastQty[c.name]; if (q && c.hcDirect == null) c.grams = String(q); delete c.est; delete c.pre; return c; });
+    save(); render(); toast('Puesto lo mismo que la última vez. Ajusta si hoy es distinto');
+  }
+  function habitsHTML(slot) {
+    var hb = habits(slot); if (!hb.last && !hb.favs.length) return '';
+    var h = '<section class="card habit"><h2>Lo de siempre en ' + (SLOTNAME[slot] || 'esta comida') + '</h2>';
+    if (hb.last && !S.meal.items.length) h += '<button class="qa main" data-act="repeat">' + ICON.food + '<span><b>Repetir lo de la última vez</b><small>' + esc(hb.last.items.map(function (x) { return x.name; }).join(', ').slice(0, 80)) + ' · ' + fmt(hb.last.carbs, 0) + ' g HC</small></span></button>';
+    if (hb.favs.length) h += '<div class="lab">Toca para añadir (con tu cantidad de siempre)</div><div class="chips">' + hb.favs.map(function (f, i) {
+      var q = S.lastQty[f.name] || f.portion, inPlate = S.meal.items.some(function (x) { return x.name === f.name; });
+      return '<button class="chip fav' + (inPlate ? ' on' : '') + '" data-act="fav" data-i="' + i + '">' + (inPlate ? '✓ ' : '+ ') + esc(f.name) + (q ? ' <small>' + fmt(q, 0) + ' ' + (f.unit === 'ud' ? 'ud' : f.unit || 'g') + '</small>' : '') + '</button>';
+    }).join('') + '</div>';
+    return h + '</section>';
+  }
+  /* Registrar la comida del plato con las unidades que te has puesto. */
+  function logMeal(u) {
+    var cc = compute(), iob0 = activeInsulin();
+    S.log.push({ t: Date.now(), ins: 'rapida', iob: Math.round(iob0 * 100) / 100, slot: cc.slot, carbs: Math.round(cc.carbs * 10) / 10, glucose: cc.g.v, trend: +S.now.trend || 0, sug: cc.r.ok ? cc.r.total : null, u: u, items: S.meal.items.map(function (x) { return x.name; }).join(', ') });
+    if (isFatty()) { S.log[S.log.length - 1].fat = true; notifyAt(7200, Date.now() + 3 * 3600e3, 'Mira tu glucosa', 'Han pasado 3 horas de una comida con mucha grasa. Es cuando suele subir.', 'fat'); }
+    remember(S.meal.items);
+    S.meal = { items: [], slot: '' }; save(); nativeSync(); closeDlg(); tab = 'ahora'; render(); window.scrollTo(0, 0);
+    toast('Registrado: ' + fu(u) + '. Si te equivocas, se borra en Registro'); checkAch(false);
   }
   function remember(items) {
     items.forEach(function (it) {
@@ -1651,14 +1701,21 @@
         openDlg('<h3>Registrar</h3><p class="mut">' + fmt(c.carbs, 1) + ' g de hidratos' + (c.r.ok ? ' · sugerencia ' + fu(c.r.total) : '') + '</p><label>Unidades de ' + esc(rapidName()) + ' que te has puesto de verdad</label><input id="ru" inputmode="decimal" value="' + (c.r.ok ? fmt(c.r.total, 2) : '') + '"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="logsave">Guardar</button></div>');
         break;
       }
+      case 'logquick': { var cq = compute(); if (cq.r.ok) logMeal(cq.r.total); break; }
+      case 'fav': { var hf = habits(curSlot()).favs[i]; if (hf) quickAdd(hf); break; }
+      case 'repeat': repeatLast(curSlot()); break;
+      case 'qminus': case 'qplus': {
+        var itq = S.meal.items[i]; if (!itq) break;
+        var uq = unitOf(itq), cur = num(itq.grams) || 0, st = uq === 'ud' ? 1 : uq === 'ml' ? 50 : cur < 50 ? 5 : 10;
+        var nv = Math.max(0, cur + (a === 'qplus' ? st : -st));
+        itq.grams = String(nv); delete itq.pre; save();
+        var inp2 = document.querySelector('#items input.n[data-i="' + i + '"]'); if (inp2) inp2.value = String(nv);
+        renderRes(); break;
+      }
       case 'logsave': {
         var u = num($('#ru').value); if (u === null) u = 0;
         if (u < 0 || u > 100) { toast('Revisa las unidades'); break; }
-        var cc = compute(), iob0 = activeInsulin();
-        S.log.push({ t: Date.now(), ins: 'rapida', iob: Math.round(iob0 * 100) / 100, slot: cc.slot, carbs: Math.round(cc.carbs * 10) / 10, glucose: cc.g.v, trend: +S.now.trend || 0, sug: cc.r.ok ? cc.r.total : null, u: u, items: S.meal.items.map(function (x) { return x.name; }).join(', ') });
-        if (isFatty()) { S.log[S.log.length - 1].fat = true; notifyAt(7200, Date.now() + 3 * 3600e3, 'Mira tu glucosa', 'Han pasado 3 horas de una comida con mucha grasa. Es cuando suele subir.', 'fat'); }
-        remember(S.meal.items);
-        S.meal = { items: [], slot: '' }; save(); nativeSync(); closeDlg(); tab = 'ahora'; render(); window.scrollTo(0, 0); toast('Registrado'); checkAch(false); break;
+        logMeal(u); break;
       }
       case 'basalquick': quickBasal(false); break;
       case 'basal': {

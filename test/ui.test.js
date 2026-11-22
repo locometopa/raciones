@@ -302,6 +302,7 @@ w.close();
     v010();
     await v011();
     await v022();
+    v023();
     console.log('interfaz: todas las pruebas pasan');
   })().catch((e) => { console.error(e); process.exit(1); });
 }
@@ -515,5 +516,32 @@ async function v022() {
   st.log.push({ t: Date.now(), ins: 'ejercicio', what: null, level: null, min: null, carbs: 0 });
   const bad = st.coach; st.coach = null; k(q('[data-tab="aprende"]')); assert.ok(vt().includes('Algo ha fallado en esta pantalla')); st.coach = bad;
   k(q('[data-act="goto"][data-v="ahora"]')); assert.ok(vt().includes('¿Qué quieres hacer?'));
+  w.close();
+}
+
+// ---- 0.23: comida de cada día en pocos toques ----
+function v023() {
+  const H = 3600e3, D = 864e5, now = Date.now();
+  const slotNow = 'comida';
+  const cfg = { ratioMode: 'g', ratios: { desayuno: '10', comida: '10', merienda: '10', cena: '10' }, isf: '50', target: '100', dia: '4', setup: 'ok', night: '0', step: '0.5' };
+  const log = [];
+  for (let d = 1; d <= 3; d++) log.push({ t: now - d * D, ins: 'rapida', slot: slotNow, carbs: 40, u: 4, items: [{ name: 'Pan blanco', hc100: 50, grams: '40' }, { name: 'Manzana', hc100: 12, grams: '150', portion: 150 }] });
+  const w = boot({ cfg, log, meal: { items: [], slot: 'comida' }, lastQty: { 'Pan blanco': 40, Manzana: 150 }, now: { v: '120', trend: 3, t: now - 60000, src: 'manual' } });
+  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  k(q('[data-tab="comida"]'));
+  assert.ok(vt().includes('Lo de siempre')); assert.ok(q('[data-act="repeat"]'));
+  // Un toque: repetir lo de la última vez
+  k(q('[data-act="repeat"]')); assert.strictEqual(st.meal.items.length, 2);
+  // Cantidades con − y +
+  const iPan = st.meal.items.findIndex((x) => x.name === 'Pan blanco');
+  k(q('[data-act="qplus"][data-i="' + iPan + '"]')); assert.strictEqual(st.meal.items[iPan].grams, '45');
+  k(q('[data-act="qminus"][data-i="' + iPan + '"]')); k(q('[data-act="qminus"][data-i="' + iPan + '"]')); assert.strictEqual(st.meal.items[iPan].grams, '35');
+  // Un toque: me pongo lo sugerido y queda registrado
+  const n0 = st.log.length; assert.ok(q('[data-act="logquick"]').textContent.includes('Me pongo'));
+  k(q('[data-act="logquick"]')); assert.strictEqual(st.log.length, n0 + 1); assert.strictEqual(st.meal.items.length, 0);
+  const e = st.log[st.log.length - 1]; assert.ok(e.u > 0 && e.carbs === 35.5, String(e.carbs));
+  // Favoritos: añadir sin preguntar
+  k(q('[data-tab="comida"]')); k(q('[data-act="fav"]')); assert.strictEqual(st.meal.items.length, 1); assert.ok(!q('#dlg').open);
   w.close();
 }
