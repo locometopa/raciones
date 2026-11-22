@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.23.0';
+  var VERSION = '0.24.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -351,6 +351,7 @@
         (it.est ? ' · <span class="estm">estimado por IA</span>' : '') + (it.pre ? ' · <span class="estm">' + (it.pre === 'last' ? 'cantidad de la última vez' : 'ración normal') + ', cámbiala si no es así</span>' : '') + '</small></div>' +
         '<button class="x" data-act="del" data-i="' + i + '" aria-label="Quitar ' + esc(it.name) + '">✕</button></div>' +
         '<div class="it-qty">' + (direct ? '' : '<button class="step" data-act="qminus" data-i="' + i + '" aria-label="Menos">−</button>') + '<label class="qty"><input class="n" inputmode="decimal" data-f="' + (direct ? 'hcDirect' : 'grams') + '" data-i="' + i + '" value="' + esc(direct ? it.hcDirect : it.grams) + '" placeholder="0" aria-label="' + (direct ? 'Gramos de hidratos' : 'Cantidad de ' + esc(it.name)) + '"><span>' + (direct ? 'g de HC' : qtyWord(unitOf(it))) + '</span></label>' + (direct ? '' : '<button class="step" data-act="qplus" data-i="' + i + '" aria-label="Más">+</button>') +
+        (!direct && unitOf(it) !== 'ud' ? '<button class="chip mini" data-act="measure" data-i="' + i + '">Medidas de casa</button>' : '') +
         (!direct && it.portion ? '<button class="chip mini" data-act="portion" data-i="' + i + '">' + (unitOf(it) === 'ud' ? 'Normal: ' : 'Ración ') + portionText(it.portion, unitOf(it)) + '</button>' : '') +
         '<span class="hc" id="hc' + i + '"></span></div></div>';
     });
@@ -440,17 +441,28 @@
   /* Añade un alimento con la cantidad de la última vez (o la ración normal) ya puesta. */
   /* Al elegir un alimento se pregunta cuánto vas a comer, con atajos y el cálculo al momento. */
   var qtyFood = null;
+  function catOf(name) { for (var i = 0; i < FOODS.length; i++) if (FOODS[i][0] === name) return FOODS[i][2]; return null; }
+  function measuresFor(f) { return Measures.forFood(f.name, f.unit || 'g', f.cat || catOf(f.name)); }
+  /* Medidas de casa para un alimento que ya está en el plato. */
+  function dlgMeasure(i) {
+    var it = S.meal.items[i]; if (!it) return;
+    var u = unitOf(it), ms = measuresFor({ name: it.name, unit: u });
+    openDlg('<h3>' + esc(it.name) + '</h3><p class="mut" style="margin-top:0">Elige la medida que más se parezca:</p><div class="mlist">' +
+      ms.map(function (m) { var c = Calc.carbsOf({ hc100: it.hc100, grams: m[1], unit: u }); return '<button data-act="mpick" data-i="' + i + '" data-v="' + m[1] + '"><span><b>' + esc(m[0]) + '</b><small>' + m[1] + ' ' + u + '</small></span><span>' + fmt(c, 0) + ' g HC</span></button>'; }).join('') +
+      '</div><p class="fine">Aproximado. Si puedes, pésalo de vez en cuando para afinar el ojo.</p><div class="acts"><button class="pri" data-act="close">Cerrar</button></div>');
+  }
   function addFood(f) {
     qtyFood = f;
     var u = f.unit || 'g', uname = u === 'ud' ? 'unidades' : u === 'ml' ? 'mililitros' : 'gramos', us = u === 'ud' ? 'ud' : u;
     var last = S.lastQty[f.name], pre = last || f.portion || '';
-    var quick = u === 'ud' ? [1, 2, 3, 4] : u === 'ml' ? [100, 200, 250, 330] : [50, 100, 150, 200];
-    var chips = (last ? [['Como la última vez', last]] : []).concat(f.portion && f.portion !== last ? [['Ración normal', f.portion]] : []).concat(quick.filter(function (q) { return q !== last && q !== f.portion; }).map(function (q) { return ['', q]; }));
+    var meas = measuresFor(f);
+    var quick = meas.length ? meas : (u === 'ud' ? [1, 2, 3, 4] : u === 'ml' ? [100, 200, 250, 330] : [50, 100, 150, 200]).map(function (q) { return ['', q]; });
+    var chips = (last ? [['Como la última vez', last]] : []).concat(f.portion && f.portion !== last ? [['Ración normal', f.portion]] : []).concat(quick.filter(function (q) { return q[1] !== last || q[0]; }));
     openDlg('<h3>¿Cuánto vas a tomar?</h3><p style="margin:0 0 4px;font-weight:650">' + esc(f.name) + '</p><p class="fine" style="margin-top:0">' + hcText(num(f.hc100) || 0, u) + '</p>' +
       '<label>Cantidad en ' + uname + '</label><div class="qrow"><input id="qn" inputmode="decimal" value="' + esc(String(pre).replace('.', ',')) + '" placeholder="0"><span>' + us + '</span></div>' +
-      '<div class="chips">' + chips.map(function (c) { return '<button class="chip" data-act="qset" data-v="' + c[1] + '">' + (c[0] ? c[0] + ' · ' : '') + fmt(c[1], 0) + ' ' + us + '</button>'; }).join('') + '</div>' +
+      '<div class="lab">Toca la medida que más se parezca</div><div class="mlist">' + chips.map(function (c) { var cc = Calc.carbsOf({ hc100: f.hc100, grams: c[1], unit: u }); return '<button data-act="qset" data-v="' + c[1] + '"><span><b>' + esc(c[0] || (fmt(c[1], 0) + ' ' + us)) + '</b>' + (c[0] ? '<small>' + fmt(c[1], 0) + ' ' + us + '</small>' : '') + '</span><span>' + fmt(cc, 0) + ' g HC</span></button>'; }).join('') + '</div>' +
       '<div class="qprev" id="qprev"></div>' +
-      (u === 'g' ? '<p class="fine">Si no tienes báscula, una ración normal de plato de arroz o pasta cocidos son unos 150–200 g.</p>' : '') +
+      (meas.length ? '<p class="fine">Medidas de casa aproximadas: si puedes, pésalo de vez en cuando para afinar el ojo.</p>' : '') +
       '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="qadd">Añadir al plato</button></div>');
     qtyPrev();
     var q = $('#qn'); if (q) { q.focus(); if (q.select) q.select(); }
@@ -1647,12 +1659,12 @@
       case 'slot': S.meal.slot = b.dataset.v; save(); render(); break;
       case 'del': S.meal.items.splice(i, 1); save(); render(); break;
       case 'clear': if (S.meal.items.length) confirmDlg('¿Vaciar la comida actual?', function () { S.meal = { items: [], slot: '' }; save(); render(); }); break;
-      case 'qset': { var qn = $('#qn'); if (qn) { qn.value = b.dataset.v; qtyPrev(); } break; }
+      case 'qset': { var qn = $('#qn'); if (qn) { qn.value = b.dataset.v; qtyPrev(); } Array.prototype.forEach.call(document.querySelectorAll('.mlist button'), function (x) { x.classList.toggle('on', x === b); }); break; }
       case 'qadd': qtyAdd(); break;
       case 'pick': {
         var f = b.dataset.src === 'c' ? S.custom[+b.dataset.k] : null, base = b.dataset.src === 'b' ? FOODS[+b.dataset.k] : null;
         if (f) addFood({ name: f.name, hc100: f.hc100, unit: f.unit || 'g', portion: null });
-        else if (base) addFood({ name: base[0], hc100: base[1], unit: base[4] || 'g', portion: base[3] || null });
+        else if (base) addFood({ name: base[0], hc100: base[1], unit: base[4] || 'g', portion: base[3] || null, cat: base[2] });
         break;
       }
       case 'newfood': dlgNewFood(($('#qi') || {}).value ? $('#qi').value.trim() : ''); break;
@@ -1702,6 +1714,8 @@
         break;
       }
       case 'logquick': { var cq = compute(); if (cq.r.ok) logMeal(cq.r.total); break; }
+      case 'measure': dlgMeasure(i); break;
+      case 'mpick': { var itm = S.meal.items[i]; if (itm) { itm.grams = String(b.dataset.v); delete itm.pre; save(); closeDlg(); render(); } break; }
       case 'fav': { var hf = habits(curSlot()).favs[i]; if (hf) quickAdd(hf); break; }
       case 'repeat': repeatLast(curSlot()); break;
       case 'qminus': case 'qplus': {

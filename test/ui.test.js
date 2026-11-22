@@ -13,7 +13,7 @@ function boot(stored, pre) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'guides', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'guides', 'measures', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;
@@ -543,5 +543,13 @@ function v023() {
   const e = st.log[st.log.length - 1]; assert.ok(e.u > 0 && e.carbs === 35.5, String(e.carbs));
   // Favoritos: añadir sin preguntar
   k(q('[data-tab="comida"]')); k(q('[data-act="fav"]')); assert.strictEqual(st.meal.items.length, 1); assert.ok(!q('#dlg').open);
+  // Medidas de casa: al elegir leche salen vaso, taza…; y en el plato, «Medidas de casa»
+  const qi = q('#qi'); qi.value = 'leche'; qi.dispatchEvent(new w.Event('input', { bubbles: true }));
+  const btn = Array.from(w.document.querySelectorAll('#qr button[data-act="pick"]')).find((b) => /^Leche/.test(b.textContent)); k(btn);
+  assert.ok(q('#dlg').textContent.includes('Taza de desayuno250 ml'));
+  k(q('[data-act="qset"][data-v="250"]')); k(q('[data-act="qadd"]'));
+  const li = st.meal.items.findIndex((x) => /^Leche/.test(x.name)); assert.strictEqual(st.meal.items[li].grams, '250');
+  k(q('[data-act="measure"][data-i="' + li + '"]')); assert.ok(q('#dlg').textContent.includes('Tazón grande'));
+  k(q('[data-act="mpick"][data-v="200"]')); assert.strictEqual(st.meal.items[li].grams, '200');
   w.close();
 }

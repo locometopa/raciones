@@ -1,0 +1,15 @@
+const assert = require('assert');
+const Ms = require('../www/js/measures.js');
+const lab = (a) => a.map((x) => x[0] + ' ' + x[1]).join(' | ');
+assert.ok(lab(Ms.forFood('Café con leche (taza)', 'ml')).includes('Taza de desayuno 250'));
+assert.ok(lab(Ms.forFood('Leche', 'ml')).includes('Vaso 200'));
+assert.ok(lab(Ms.forFood('Refresco de cola / naranja / limón', 'ml')).includes('Lata 330'));
+assert.ok(lab(Ms.forFood('Cerveza', 'ml')).includes('Caña 200'));
+assert.ok(lab(Ms.forFood('Pan blanco (barra)', 'g')).includes('Cuarto de barra 60'));
+assert.ok(lab(Ms.forFood('Arroz blanco cocido', 'g')).includes('Plato hondo normal 200'));
+assert.ok(lab(Ms.forFood('Lentejas crudas', 'g')).includes('Ración en crudo 70'));
+assert.ok(lab(Ms.forFood('Manzana', 'g', 'Fruta')).includes('Pieza mediana 150'));
+assert.ok(lab(Ms.forFood('Yogur natural', 'g')).includes('1 yogur 125'));
+assert.deepStrictEqual(Ms.forFood('Sobre de azúcar (8 g)', 'ud'), []);
+assert.ok(Ms.forFood('Cosa rara', 'g').length >= 3); assert.ok(lab(Ms.forFood('Cosa rara', 'ml')).includes('Vaso'));
+console.log('medidas: todas las pruebas pasan');
