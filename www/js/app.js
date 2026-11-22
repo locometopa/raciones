@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.22.0';
+  var VERSION = '0.22.1';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -170,7 +170,7 @@
   function corrHTML() {
     var c = corrSuggest(); if (!c) return '';
     if (c.cfg) return '<div class="note info">Estás alto. Pon tu sensibilidad y tu objetivo en Ajustes y te calcularé si toca corregir.</div>';
-    if (c.wait) return '<div class="note info">Estás en ' + fmt(c.g, 0) + '. Tu última ' + esc(rapidName()) + ' aún está actuando: espera unos ' + c.wait + ' min antes de pensar en corregir.</div>';
+    if (c.wait) return '<div class="note info">Estás en ' + fmt(c.g, 0) + '. Tu última ' + esc(rapidName()) + ' aún está actuando: espera ' + (c.wait >= 60 ? 'unas ' + Calc.roundStep(c.wait / 60, 0.5).toString().replace('.', ',') + ' h' : 'unos ' + c.wait + ' min') + ' antes de pensar en corregir.</div>';
     var u = c.r.total, isf = num(S.cfg.isf), tg = num(S.cfg.target);
     var how = '(' + fmt(c.g, 0) + (c.adj ? (c.adj > 0 ? ' + ' : ' − ') + Math.abs(c.adj) + ' por la flecha ' + ARROWS[c.tr] : '') + ' − ' + fmt(tg, 0) + ') ÷ ' + fmt(isf, 0) + ' = ' + fmt(c.r.corr, 1) + ' U' + (c.iob > 0.05 ? ' − ' + fmt(c.iob, 1) + ' U aún activas' : '');
     if (!(u > 0)) return '<div class="note info"><b>No hace falta corregir:</b> ' + how + '. La insulina que tienes activa ya lo cubre.</div>';
@@ -281,6 +281,7 @@
       '<span class="gl">Glucosa</span><span class="gv"><span class="num">' + (x.g.v !== null ? fmt(x.g.v, 0) : '—') + '</span>' +
       (x.arrow ? '<span class="arr">' + x.arrow + '</span>' : '') + '<span class="un">mg/dL</span></span>' +
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
+    h += (corrHidden > Date.now() ? '' : corrHTML()) + coachHTML(x);
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
     var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
@@ -291,9 +292,9 @@
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
     h += kitDueHTML();
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
-    h += sickHTML() + (corrHidden > Date.now() ? '' : corrHTML());
+    h += sickHTML();
     h += quickHTML(lowish);
-    h += coachHTML(x) + moodCardHTML() + supportHTML();
+    h += moodCardHTML() + supportHTML();
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
