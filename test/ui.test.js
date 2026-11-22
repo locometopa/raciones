@@ -441,6 +441,16 @@ async function v011() {
   const sec = q('details.sec[data-sec="s1"]'); sec.open = true; sec.dispatchEvent(new w.Event('toggle')); w.__raciones.render(); assert.ok(q('details.sec[data-sec="s1"]').open);
   // Enviamos las últimas horas al widget
   assert.ok(calls.filter((c) => c[0] === 'set').length >= 2);
+  // Corrección sugerida con la flecha: (260 + 50 − 100) ÷ 24 = 8,75 U, menos la insulina activa
+  st.cfg.night = '0'; st.cfg.isf = '24'; st.cfg.target = '100'; st.cfg.step = '0.5'; st.cfg.maxBolus = '';
+  st.log = st.log.filter((e) => !(e.ins === 'rapida' || !e.ins) || Date.now() - e.t > 6 * H);
+  st.now = { v: '260', trend: 4, t: Date.now(), src: 'libre' };
+  k(q('[data-tab="ahora"]')); assert.ok(q('.corr'), 'tarjeta de corrección'); assert.ok(q('.corr').textContent.includes('por la flecha ↗'));
+  assert.ok(q('.corr .cu').textContent.includes('8,5') || q('.corr .cu').textContent.includes('9'), q('.corr .cu').textContent); assert.ok(q('.corr').textContent.includes('corrección grande'));
+  k(q('[data-act="corrlog"]')); assert.ok(q('#du').value.length > 0); k(q('[data-act="dosesave"]')); await tick();
+  assert.ok(sched.some((n) => n.id === 7700), 'recordatorio a las 2 h');
+  w.__raciones.render(); assert.ok(!q('.corr')); assert.ok(vt().includes('aún está actuando'));
+  st.now = { v: '150', trend: 3, t: Date.now(), src: 'libre' }; w.__raciones.render(); assert.ok(!vt().includes('aún está actuando'));
   // Tema claro y modo noche
   st.cfg.night = '0'; st.cfg.theme = 'light'; w.__raciones.render(); assert.ok(w.document.documentElement.classList.contains('light'));
   st.cfg.night = '1'; st.cfg.nightFrom = '00:00'; st.cfg.nightTo = '23:59'; w.__raciones.render(); assert.ok(w.document.documentElement.classList.contains('night')); assert.ok(!w.document.documentElement.classList.contains('light'));

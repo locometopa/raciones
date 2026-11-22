@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.20.1';
+  var VERSION = '0.21.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -41,7 +41,7 @@
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
       kit: { sensorT: 0, sensorDays: '14', rapidT: 0, basalT: 0 },
-      bg: { on: '0', missed: '1', low: '0', persist: '0', predict: '1', xdrip: '0' },
+      bg: { on: '0', missed: '1', low: '0', persist: '0', predict: '1', xdrip: '0', high: '1' },
       coach: { used: [], unlocked: [], tipDate: '', tipId: '', ach: [], reportShared: 0, newTip: 0 },
       meal: { items: [], slot: '' }
     };
@@ -143,6 +143,39 @@
     return { slot: slot, carbs: carbs, gpu: gpu, g: g, r: r };
   }
 
+  /* Corrección sugerida cuando estás alto: (glucosa + ajuste por la flecha − objetivo) ÷ sensibilidad − insulina activa.
+     Nunca si hace menos de 2 h de la última rápida, ni sin lectura reciente, ni con las pautas sin poner. */
+  var ARROWS = { 1: '↓', 2: '↘', 3: '→', 4: '↗', 5: '↑' };
+  var corrHidden = 0;
+  function corrSuggest() {
+    var g = gNow(), now = Date.now();
+    if (S.cfg.corrCard === '0' || g.v === null || !S.now.t || now - S.now.t > STALE_MS) return null;
+    var from = num(S.cfg.corrFrom) || Math.max(num(S.cfg.rangeHigh) || 180, (num(S.cfg.target) || 100) + 50);
+    if (g.v < from) return null;
+    if (!(num(S.cfg.isf) > 0) || !(num(S.cfg.target) > 0)) return { cfg: true };
+    var last = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
+    if (last && now - last.t < 2 * 3600e3) return { wait: Math.ceil((2 * 3600e3 - (now - last.t)) / 60000), g: g.v };
+    var tr = +S.now.trend || 0, adj = TREND_ADJ[tr] || 0, iob = activeInsulin();
+    var r = Calc.bolus({ carbs: 0, glucose: g.v, trendAdj: adj, gPerU: 10, isf: S.cfg.isf, target: S.cfg.target, iob: iob, iobMode: 'total', step: S.cfg.step, maxBolus: S.cfg.maxBolus, hypo: S.cfg.hypo });
+    if (!r.ok) return null;
+    return { g: g.v, tr: tr, adj: adj, iob: iob, r: r, night: isNight() };
+  }
+  function corrHTML() {
+    var c = corrSuggest(); if (!c) return '';
+    if (c.cfg) return '<div class="note info">Estás alto. Pon tu sensibilidad y tu objetivo en Ajustes y te calcularé si toca corregir.</div>';
+    if (c.wait) return '<div class="note info">Estás en ' + fmt(c.g, 0) + '. Tu última ' + esc(rapidName()) + ' aún está actuando: espera unos ' + c.wait + ' min antes de pensar en corregir.</div>';
+    var u = c.r.total, isf = num(S.cfg.isf), tg = num(S.cfg.target);
+    var how = '(' + fmt(c.g, 0) + (c.adj ? (c.adj > 0 ? ' + ' : ' − ') + Math.abs(c.adj) + ' por la flecha ' + ARROWS[c.tr] : '') + ' − ' + fmt(tg, 0) + ') ÷ ' + fmt(isf, 0) + ' = ' + fmt(c.r.corr, 1) + ' U' + (c.iob > 0.05 ? ' − ' + fmt(c.iob, 1) + ' U aún activas' : '');
+    if (!(u > 0)) return '<div class="note info"><b>No hace falta corregir:</b> ' + how + '. La insulina que tienes activa ya lo cubre.</div>';
+    return '<section class="card corr"><div class="kv"><span><b>Corrección sugerida</b><small>' + esc(how) + '</small></span><b class="cu">' + fu(u) + '</b></div>' +
+      (c.adj > 0 ? '<p class="fine">Va incluido el ajuste por la flecha hacia arriba (regla de Peters, la del documento de tu equipo).</p>' : '') +
+      (u >= 5 ? '<div class="note warn">Es una corrección grande. Compruébala en el dedo antes y, si dudas, consulta con tu equipo.</div>' : '') +
+      (c.night ? '<div class="note warn">Es de noche: muchos equipos aconsejan corregir con más prudencia para no bajar mientras duermes.</div>' : '') +
+      (c.r.capped ? '<p class="fine">Limitada a tu dosis máxima de Ajustes.</p>' : '') +
+      '<div class="row"><button class="pri" data-act="corrlog" data-v="' + u + '">Apuntar ' + fu(u) + '</button><button class="ghost" data-act="corrnot">Ahora no</button></div>' +
+      '<p class="fine">Orientativo, con tus pautas. Tú decides; si algo no cuadra, mídete en el dedo.</p></section>';
+  }
+
   // ---------- vista: ahora ----------
   function vNow() {
     var x = gView(), h = '';
@@ -160,7 +193,7 @@
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
     h += kitDueHTML();
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
-    h += coachHTML(x) + moodCardHTML() + supportHTML();
+    h += (corrHidden > Date.now() ? '' : corrHTML()) + coachHTML(x) + moodCardHTML() + supportHTML();
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
@@ -640,7 +673,10 @@
       sel('Tu pluma dosifica de…', 'cfg.step', [['1', '1 en 1 unidad'], ['0.5', '0,5 en 0,5 unidades']]) +
       field('Dosis máxima por inyección (tope de seguridad, opcional)', 'cfg.maxBolus') +
       field('Por debajo de esta glucosa no sugerir dosis (mg/dL) · línea roja', 'cfg.hypo') +
-      sel('Tener en cuenta la flecha del sensor', 'cfg.useTrend', [['0', 'No, solo avisar'], ['1', 'Sí: ±50 / 75 / 100 mg/dL (regla del documento de la Dra. Barrio)']]) + '</section>';
+      sel('Tener en cuenta la flecha del sensor', 'cfg.useTrend', [['0', 'No, solo avisar'], ['1', 'Sí: ±50 / 75 / 100 mg/dL (regla del documento de la Dra. Barrio)']]) +
+      sel('Sugerir corrección cuando estés alto', 'cfg.corrCard', [['1', 'Sí, en la pantalla Ahora (con la flecha)'], ['0', 'No']]) +
+      field('Sugerir a partir de (mg/dL)', 'cfg.corrFrom', 'inputmode="numeric" placeholder="' + Math.max(num(S.cfg.rangeHigh) || 180, (num(S.cfg.target) || 100) + 50) + '"') +
+      sel('Recordarme mirar 2 h después de corregir', 'cfg.corrCheck', [['1', 'Sí'], ['0', 'No']]) + '</section>';
     h += '<section class="card"><h2>Sensor Libre (LibreLinkUp)</h2><p class="mut">La app lee tu glucosa y la gráfica a través de LibreLinkUp, la función de compartir de Abbott. Necesitas una cuenta de LibreLinkUp con <b>otro correo</b> distinto al de tu LibreLink, invitada desde LibreLink → Aplicaciones conectadas → LibreLinkUp. La app LibreLinkUp solo hace falta para crear esa cuenta y aceptar la invitación; después puedes desinstalarla y, si Abbott pide aceptar condiciones nuevas, iocrino te deja hacerlo desde aquí. No es una vía oficial: puede dejar de funcionar si Abbott la cambia.</p>' +
       field('Correo de la cuenta LibreLinkUp', 'libre.email', 'type="email" autocomplete="off"') +
       field('Contraseña', 'libre.password', 'type="password" autocomplete="off"') +
@@ -1189,7 +1225,7 @@
   async function nativeSync() {
     var nb = nativeBg(); if (!nb) return;
     var nw = nightWindow();
-    var cfg = { night: S.cfg.night !== '0', nightFrom: nw[0], nightTo: nw[1], mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
+    var cfg = { high: S.bg.high !== '0', night: S.cfg.night !== '0', nightFrom: nw[0], nightTo: nw[1], mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
     var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
@@ -1211,6 +1247,7 @@
   function doAction(a) {
     closeDlg();
     if (a === 'comida') { tab = 'comida'; render(); window.scrollTo(0, 0); }
+    else if (a === 'ahora') { tab = 'ahora'; render(); window.scrollTo(0, 0); }
     else if (a === 'lenta') { tab = 'ahora'; render(); if (basalDoneToday()) toast(basalName() + ' ya está apuntada hoy'); else quickBasalAsk(); }
     else if (a === 'bajo') { tab = 'ahora'; render(); hipoWhat = ''; dlgHipo(); }
   }
@@ -1222,6 +1259,7 @@
   function bgSettingsHTML() {
     return '<section class="card"><h2>Con la app cerrada</h2><p class="mut">Los avisos de bajada en camino van mejor con la <b>glucosa fija</b> activada, porque así se lee el Libre cada minuto. Si solo activas la lectura con la app cerrada, el móvil lee cada 15 minutos aproximadamente aunque no abras iocrino. Sirve para el <b>widget</b> de la pantalla de inicio y para los avisos de abajo. Android puede retrasarlo un poco con el ahorro de batería.</p>' +
       sel('Leer el Libre con la app cerrada', 'bg.on', [['0', 'No'], ['1', 'Sí']]) +
+      sel('Avisar si estás alto y subiendo', 'bg.high', [['1', 'Sí (más de 250 con flecha hacia arriba, sin rápida en 2 h)'], ['0', 'No']]) +
       sel('Avisar de una bajada antes de que llegue', 'bg.predict', [['1', 'Sí (unos 20 min antes, según cómo bajas)'], ['0', 'No']]) +
       sel('Avisar si parece que se te olvidó comer o pincharte', 'bg.missed', [['1', 'Sí (sube y no hay comida ni dosis apuntada)'], ['0', 'No']]) +
       sel('Avisar si bajas de tu límite de hipo', 'bg.low', [['0', 'No (ya avisa la app del Libre)'], ['1', 'Sí']]) +
@@ -1584,11 +1622,14 @@
       case 'repshare': S.coach.reportShared = 1; save(); checkAch(false); shareText('Informe de iocrino', Report.text(Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: Date.now(), days: repDays }), 'iocrino')); break;
       case 'repcsv': shareFile('iocrino-registro-' + today() + '.csv', csv(), 'Registro de iocrino'); break;
       case 'dose': dlgDose(); break;
+      case 'corrnot': corrHidden = Date.now() + 30 * 60000; render(); break;
+      case 'corrlog': dlgDose(); var duu = $('#du'); if (duu) duu.value = String(b.dataset.v).replace('.', ','); break;
       case 'dosekind': Array.prototype.forEach.call(document.querySelectorAll('#dk .chip'), function (c) { c.classList.toggle('on', c === b); }); break;
       case 'dosesave': {
         var dv = num($('#du').value); if (!(dv > 0) || dv > 100) { toast('Revisa las unidades'); break; }
         var kind = ($('#dk .chip.on') || {}).dataset ? $('#dk .chip.on').dataset.v : 'correccion';
         S.log.push({ t: Date.now(), ins: 'rapida', u: dv, carbs: 0, kind: kind, slot: curSlot(), glucose: gNow().v, iob: Math.round(activeInsulin() * 100) / 100 });
+        if (kind === 'correccion' && S.cfg.corrCheck !== '0') notifyAt(7700, Date.now() + 2 * 3600e3, '¿Cómo ha ido la corrección?', 'Han pasado 2 horas de la corrección de ' + fu(dv) + '. Mira cómo vas.', 'corr');
         S.missedOff = 0; save(); nativeSync(); closeDlg(); render(); toast(rapidName() + ' apuntada'); break;
       }
       case 'missedoff': S.missedOff = Date.now(); save(); render(); break;

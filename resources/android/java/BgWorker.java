@@ -135,6 +135,12 @@ public class BgWorker extends Worker {
                 p.edit().putLong("predT", now).apply();
             }
         }
+        // Alto y subiendo, sin rápida en 2 h: que abra la app para ver la corrección sugerida (de noche también: es seguridad)
+        if (cfg.optBoolean("high", true) && rd.v > cfg.optInt("alto", 250) && (rd.trend == 4 || rd.trend == 5)
+                && now - cfg.optLong("lastRapid", 0) > 2 * H && now - p.getLong("highT", 0) > 2 * H) {
+            notify(c, 7404, "Alto y subiendo: " + rd.v + " " + (rd.trend == 5 ? "↑" : "↗"), "Abre iocrino: te calculo si toca corregir, teniendo en cuenta la flecha y la insulina activa.", "Ver corrección", GlucoseWidget.open(c, "ahora", 23));
+            p.edit().putLong("highT", now).apply();
+        }
         // Dosis o comida sin apuntar (de noche, en silencio)
         if (!cfg.optBoolean("missed", true) || inNight(cfg, now)) return;
         if (now - cfg.optLong("missedOff", 0) < 3 * H || now - cfg.optLong("lastRapid", 0) < 2 * H || now - p.getLong("missedT", 0) < 3 * H) return;
