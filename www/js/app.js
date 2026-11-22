@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.21.0';
+  var VERSION = '0.22.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -21,6 +21,9 @@
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>',
     tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
     mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+    food: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10M17 21V3c-2.2 1.3-3.5 4-3.5 7.5S15 15 17 15"/></svg>',
+    drop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/><path d="M9.5 14.5h5"/></svg>',
+    therm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/><path d="M12 10v7"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
   };
   var native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
@@ -40,6 +43,9 @@
       now: { v: '', trend: 0, t: null, src: '' },
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
+      sick: { on: 0, since: 0 },
+      exPlan: null,
+      errs: [],
       kit: { sensorT: 0, sensorDays: '14', rapidT: 0, basalT: 0 },
       bg: { on: '0', missed: '1', low: '0', persist: '0', predict: '1', xdrip: '0', high: '1' },
       coach: { used: [], unlocked: [], tipDate: '', tipId: '', ach: [], reportShared: 0, newTip: 0 },
@@ -49,13 +55,14 @@
   function merge(d, j) {
     if (!j || typeof j !== 'object') return d;
     var ratios = Object.assign({}, d.cfg.ratios, j.cfg && j.cfg.ratios);
-    ['cfg', 'libre', 'ai', 'now', 'meal', 'backup', 'coach', 'kit', 'bg'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
+    ['cfg', 'libre', 'ai', 'now', 'meal', 'backup', 'coach', 'kit', 'bg', 'sick'].forEach(function (k) { if (j[k] && typeof j[k] === 'object') Object.assign(d[k], j[k]); });
     d.cfg.ratios = ratios;
     ['custom', 'plates', 'log', 'recent', 'hist'].forEach(function (k) { if (Array.isArray(j[k])) d[k] = j[k]; });
     if (j.lastQty && typeof j.lastQty === 'object') d.lastQty = j.lastQty;
     ['hipoCheck', 'missedOff'].forEach(function (k) { if (typeof j[k] === 'number') d[k] = j[k]; });
     if (!Array.isArray(d.meal.items)) d.meal.items = [];
     ['used', 'unlocked', 'ach'].forEach(function (k) { if (!Array.isArray(d.coach[k])) d.coach[k] = []; });
+    if (!Array.isArray(d.errs)) d.errs = [];
     ['keys', 'models'].forEach(function (k) { if (!d.ai[k] || typeof d.ai[k] !== 'object') d.ai[k] = {}; });
     if (!Vision.PROVIDERS[d.ai.provider]) d.ai.provider = 'claude';
     // 0.2–0.3 guardaban una sola clave, de Claude
@@ -176,6 +183,97 @@
       '<p class="fine">Orientativo, con tus pautas. Tú decides; si algo no cuadra, mídete en el dedo.</p></section>';
   }
 
+  /* Botones grandes de «¿Qué quieres hacer?» en Ahora: todo lo del día a día a un toque. */
+  function quickHTML(lowish) {
+    var tile = function (act, icon, t, sub, cls) { return '<button class="qa' + (cls ? ' ' + cls : '') + '" data-act="' + act + '">' + icon + '<span><b>' + t + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</span></button>'; };
+    var h = '<div class="lab qlab">¿Qué quieres hacer?</div><div class="qgrid">';
+    h += tile('goto" data-v="comida', ICON.food, S.meal.items.length ? 'Seguir con la comida' : 'Voy a comer', S.meal.items.length ? S.meal.items.length + ' en el plato' : 'Calculo la dosis', 'main');
+    if (!S.hipoCheck && !lowish) h += tile('hipo', ICON.drop, 'Estoy bajo', 'Qué tomar', 'low');
+    if (hasBasal()) h += tile(basalDoneToday() ? 'goto" data-v="registro' : (num(S.cfg.basalDose) > 0 ? 'basalquick' : 'basal'), ICON.pen, basalName(), basalDoneToday() ? '✓ apuntada hoy' : 'Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : ''));
+    h += tile('exmenu', ICON.run, 'Ejercicio', exPlanActive() ? 'Plan para las ' + hm(S.exPlan.t) : 'Antes o después');
+    h += tile(S.sick.on ? 'sickinfo' : 'sickon', ICON.therm, S.sick.on ? 'Modo enfermo' : 'Estoy enfermo', S.sick.on ? 'Activado' : 'Fiebre, vómitos…', S.sick.on ? 'on' : '');
+    return h + '</div>';
+  }
+
+  // ---------- modo enfermo ----------
+  function sickHTML() {
+    if (!S.sick.on) return '';
+    var hrs = Math.max(1, Math.round((Date.now() - S.sick.since) / 3600e3));
+    var k = S.log.filter(function (e) { return e.ins === 'cetonas'; }).sort(function (a, b) { return b.t - a.t; })[0], kr = k ? Guides.ketone(k.mmol) : null;
+    return '<section class="card sick"><div class="kv"><b>Modo enfermo</b><small class="mut">desde hace ' + hrs + ' h</small></div><ol class="srules">' +
+      Guides.SICK_RULES.map(function (r) { return '<li><b>' + r[0] + '.</b></li>'; }).join('') + '</ol>' +
+      '<details class="how"><summary>Por qué y cómo</summary><ul class="srules">' + Guides.SICK_RULES.map(function (r) { return '<li><b>' + r[0] + ':</b> ' + r[1] + '</li>'; }).join('') + '</ul></details>' +
+      (kr ? '<div class="note ' + (kr.tone === 'ok' ? 'info' : kr.tone) + '">Cetonas: <b>' + fmt(k.mmol, 1) + '</b> a las ' + hm(k.t) + '. ' + esc(kr.t) + '</div>' : '') +
+      '<div class="row"><button class="pri" data-act="keto">Apuntar cetonas</button><button data-act="sickhelp">Cuándo pedir ayuda</button></div>' +
+      '<div class="row"><button class="ghost" data-act="sickoff">Ya estoy bien</button></div></section>';
+  }
+  function dlgSickOn() {
+    openDlg('<h3>¿Te encuentras mal?</h3><p>Con fiebre, gripe, vómitos o diarrea la glucosa se descontrola: suele subir aunque comas menos, y pueden aparecer cetonas.</p>' +
+      '<p>Si activas el <b>modo enfermo</b>, iocrino te pone a mano las normas de días de enfermedad, te recuerda cada 3 horas mirar la glucosa, las cetonas y beber, y te avisa si pasas de 250 para que midas cetonas.</p>' +
+      '<p class="fine">Son normas generales. Si tu equipo te dio una pauta para días de enfermedad, esa manda.</p>' +
+      '<div class="acts"><button data-act="close">Ahora no</button><button class="pri" data-act="sickyes">Activar</button></div>');
+  }
+  function dlgSickHelp() {
+    openDlg('<h3>Cuándo pedir ayuda</h3><p>Llama a tu equipo de diabetes o al centro de salud si:</p><ul class="srules">' + Guides.SICK_HELP.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
+      '<div class="note bad">Ante dolor de tripa fuerte, respiración rápida, mucho sueño o confusión: <b>112</b>.</div><div class="acts"><button class="pri" data-act="close">Vale</button></div>');
+  }
+  function dlgKeto() {
+    openDlg('<h3>Cetonas en sangre</h3><label>Resultado del medidor (mmol/L)</label><input id="kv" inputmode="decimal" placeholder="Ej.: 0,4"><div id="kprev" class="qprev">Escribe el número que marca el medidor</div>' +
+      '<p class="fine">Si solo tienes tiras de orina, apunta: negativo = 0; trazas o + = 1; ++ = 2; +++ = 3 (aproximado).</p>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="ketosave">Guardar</button></div>');
+    var kv = $('#kv'); if (kv) kv.focus();
+  }
+  function ketoPrev() { var el = $('#kprev'), r = Guides.ketone(($('#kv') || {}).value); if (el) el.innerHTML = r ? esc(r.t) : 'Escribe el número que marca el medidor'; }
+  /* Recordatorios cada 3 h durante 24 h mientras dura el modo enfermo. */
+  async function scheduleSick() {
+    for (var i = 0; i < 8; i++) {
+      if (S.sick.on) await notifyAt(7800 + i, Date.now() + (i + 1) * 3 * 3600e3, 'Modo enfermo: toca revisar', 'Mira la glucosa' + (i % 2 ? '' : ' y las cetonas') + ', bebe un vaso de agua y no dejes la lenta.', 'sick');
+      else await notifyAt(7800 + i, 0);
+    }
+  }
+
+  // ---------- ejercicio: antes (calculadora) y después (apuntar) ----------
+  function exPlanActive() { return !!(S.exPlan && S.exPlan.t && S.exPlan.t > Date.now() - 2 * 3600e3 && S.exPlan.t < Date.now() + 4 * 3600e3); }
+  var exSel = { kind: 'fondo', level: 'moderado', min: 45, when: 0, meal: true };
+  function dlgExMenu() {
+    openDlg('<h3>Ejercicio</h3><div class="qgrid one"><button class="qa main" data-act="explan">' + ICON.run + '<span><b>Voy a hacer ejercicio</b><small>Qué tomar y cuánta insulina bajar</small></span></button>' +
+      '<button class="qa" data-act="exercise">' + ICON.pencil + '<span><b>Ya lo he hecho</b><small>Apuntarlo en el registro</small></span></button></div><div class="acts"><button data-act="close">Cerrar</button></div>');
+  }
+  function dlgExPlan() {
+    var ch = function (key, opts) { return '<div class="chips">' + opts.map(function (o) { return '<button class="chip' + (String(exSel[key]) === String(o[0]) ? ' on' : '') + '" data-act="exsel" data-k="' + key + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>'; };
+    var g = gNow().v, fresh = S.now.t && Date.now() - S.now.t <= STALE_MS;
+    var plan = Guides.exercisePlan({ g: fresh ? g : null, level: exSel.level, min: exSel.min, kind: exSel.kind, meal: exSel.meal });
+    var h = '<h3>Voy a hacer ejercicio</h3>' +
+      '<label>¿Qué tipo?</label>' + ch('kind', [['fondo', 'Andar, bici, correr, nadar'], ['mixto', 'Fútbol, pádel, tenis'], ['fuerza', 'Pesas, sprints']]) +
+      '<label>¿Cómo de fuerte?</label>' + ch('level', [['suave', 'Suave'], ['moderado', 'Moderado'], ['intenso', 'Intenso']]) +
+      '<label>¿Cuánto rato?</label>' + ch('min', [[30, '30 min'], [45, '45 min'], [60, '1 h'], [90, '1 h 30']]) +
+      '<label>¿Cuándo empiezas?</label>' + ch('when', [[0, 'Ya'], [30, 'En 30 min'], [60, 'En 1 h'], [120, 'En 2 h']]) +
+      '<label>¿Vas a comer antes (con rápida)?</label>' + ch('meal', [['true', 'Sí'], ['false', 'No']]) +
+      '<div class="note ' + (plan.pre.tone === 'ok' ? 'info' : plan.pre.tone) + '"><b>Antes de empezar' + (fresh && g !== null ? ' (ahora ' + fmt(g, 0) + ')' : '') + ':</b> ' + esc(plan.pre.t) + '</div>' +
+      (exSel.meal ? (plan.cut ? '<div class="note info"><b>Rápida de esa comida:</b> bájala un <b>' + plan.cut + ' %</b>. Te lo recordaré al calcular la comida.</div>' : '<div class="note info"><b>Rápida de esa comida:</b> para este ejercicio no hay una reducción fija. Empieza con prudencia y apunta qué pasa.</div>') : '') +
+      '<ul class="srules">' + plan.tips.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
+      '<p class="fine">Recomendaciones del consenso internacional sobre ejercicio y diabetes tipo 1 (2017). Ajústalas con tu equipo según cómo te vaya.</p>' +
+      '<div class="acts"><button data-act="close">Cerrar</button><button class="pri" data-act="explansave">Guardar el plan</button></div>';
+    openDlg(h);
+  }
+  function exPlanNote(total) {
+    if (!exPlanActive() || !S.exPlan.cut || !(total > 0)) return '';
+    var u = Calc.roundStep(total * (1 - S.exPlan.cut / 100), num(S.cfg.step) || 1);
+    return '<div class="note info"><b>Vas a hacer ejercicio</b> a las ' + hm(S.exPlan.t) + ' (' + esc(S.exPlan.level) + ', ' + S.exPlan.min + ' min): el consenso propone bajar esta rápida un ' + S.exPlan.cut + ' % → <b>' + fu(u) + '</b> en vez de ' + fu(total) + '.<div class="row"><button class="chip mini" data-act="useex" data-v="' + u + '">Usar ' + fu(u) + '</button></div></div>';
+  }
+
+  // ---------- red de seguridad: si algo falla, la app sigue y se puede ver qué pasó ----------
+  function logErr(m) {
+    try { S.errs.push({ t: Date.now(), v: VERSION, m: String(m).slice(0, 300) }); S.errs = S.errs.slice(-20); save(); } catch (e) { /* nada */ }
+  }
+  window.addEventListener('error', function (e) { logErr((e && e.message) + ' @' + (e && e.filename ? String(e.filename).split('/').pop() : '') + ':' + (e && e.lineno)); });
+  window.addEventListener('unhandledrejection', function (e) { logErr('promesa: ' + (e && e.reason && (e.reason.message || e.reason))); });
+  function diagHTML() {
+    return '<section class="card"><h2>Si algo falla</h2><p class="mut">Si alguna pantalla hace algo raro, aquí quedan apuntados los fallos para poder arreglarlos. No contienen tus datos de salud.</p>' +
+      (S.errs.length ? S.errs.slice(-5).reverse().map(function (e) { return '<div class="tipi"><small class="mut">' + new Date(e.t).toLocaleString('es-ES') + ' · v' + esc(e.v) + '</small><br>' + esc(e.m) + '</div>'; }).join('') +
+        '<div class="row"><button data-act="errcopy">Copiar para enviarlo</button><button class="ghost" data-act="errclear">Borrar</button></div>' : '<p class="fine">Ningún fallo apuntado. 👍</p>') + '</section>';
+  }
+
   // ---------- vista: ahora ----------
   function vNow() {
     var x = gView(), h = '';
@@ -193,24 +291,24 @@
     if (libreErr) h += '<p class="lerr">Libre: ' + esc(libreErr) + (libreStep ? ' <button class="ghost" data-act="librestep">Resolver</button>' : '') + '</p>';
     h += kitDueHTML();
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
-    h += (corrHidden > Date.now() ? '' : corrHTML()) + coachHTML(x) + moodCardHTML() + supportHTML();
+    h += sickHTML() + (corrHidden > Date.now() ? '' : corrHTML());
+    h += quickHTML(lowish);
+    h += coachHTML(x) + moodCardHTML() + supportHTML();
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
     if (S.now.src === 'manual' && x.g.v !== null && S.now.t) dots.push({ t: S.now.t, v: x.g.v });
     h += '<section class="card chartc">' + Chart.svg({
       now: now, hours: 12, points: S.hist.filter(function (p) { return p[0] > now - 13 * 3600e3; }).map(function (p) { return { t: p[0], v: p[1] }; }).concat(S.hist.length ? [] : S.libre.graph), dots: S.hist.length || S.libre.graph.length ? [] : dots,
-      marks: S.log.filter(function (e) { return e.ins !== 'hipo' && e.ins !== 'ejercicio' && e.ins !== 'animo'; }).map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
+      marks: S.log.filter(function (e) { return e.ins !== 'hipo' && e.ins !== 'ejercicio' && e.ins !== 'animo' && e.ins !== 'cetonas'; }).map(function (e) { return { t: e.t, u: e.u, kind: e.ins === 'basal' ? 'basal' : '' }; }),
       low: num(S.cfg.rangeLow) || 70, high: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250, cls: x.cls
     }) + '</section>';
-    h += '<button class="pri big" data-act="goto" data-v="comida">' + (S.meal.items.length ? 'Seguir con la comida (' + S.meal.items.length + ')' : 'Calcular comida') + '</button>';
-    if (!S.hipoCheck && !lowish) h += '<button class="lowbtn" data-act="hipo">Estoy bajo</button>';
     var last = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
     var lastB = S.log.filter(function (e) { return e.ins === 'basal'; }).sort(function (a, b) { return b.t - a.t; })[0];
     h += '<section class="card"><div class="kv"><span>' + esc(S.cfg.rapid && S.cfg.rapid !== 'Otra' ? S.cfg.rapid + ' activa' : 'Insulina activa') + '</span><b>' + (num(S.cfg.dia) > 0 ? fu(activeInsulin()) : '—') + '</b></div>' +
       (last ? '<div class="kv"><span>Última dosis</span><b>' + fu(last.u) + ' · ' + hm(last.t) + '</b></div>' : '') +
       (hasBasal() ? '<div class="kv basalrow' + (basalDoneToday() ? ' hecha' : '') + '"><span>' + esc(basalName()) + ' (lenta)<small>' + (lastB ? fu(lastB.u) + ' · ' + agoText(lastB.t) : 'sin apuntar') + (num(S.cfg.basalDose) > 0 && S.cfg.basalTime ? ' · aviso a las ' + esc(S.cfg.basalTime) : '') + '</small></span>' +
-        (basalDoneToday() ? '<span class="ok">✓ hoy</span>' : '<button class="chip mini' + (num(S.cfg.basalDose) > 0 ? ' pri' : '') + '" data-act="' + (num(S.cfg.basalDose) > 0 ? 'basalquick' : 'basal') + '">Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : '') + '</button>') + '</div>' : '') +
+        (basalDoneToday() ? '<span class="ok">✓ hoy</span>' : '<span class="mut">pendiente</span>') + '</div>' : '') +
       (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina en Ajustes para ver la insulina activa.</p>') + '</section>';
     h += tipHTML();
     view.innerHTML = h;
@@ -281,7 +379,7 @@
       var lastR = rapidLog().filter(function (e) { return e.u > 0; }).sort(function (a, b) { return b.t - a.t; })[0];
       if (r.hasGlucose && r.corr > 0 && lastR && Date.now() - lastR.t < 2 * 3600e3) h += '<div class="note warn">Tu última dosis fue hace ' + Math.round((Date.now() - lastR.t) / 60000) + ' min. Se aconseja no poner corrección hasta pasadas 2 horas: lo que queda activo ya se descuenta, pero vigila.</div>';
       var ex = lastExercise(); if (ex && Date.now() - ex.t < 6 * 3600e3) h += '<div class="note warn">Hiciste ejercicio ' + agoText(ex.t) + ' (' + esc(ex.what) + ', ' + ex.min + ' min). Puede que la glucosa baje más de lo normal durante horas, incluso por la noche. El cálculo no lo tiene en cuenta: si tu equipo te dijo cuánto reducir, aplícalo.</div>';
-      h += fatHTML();
+      h += exPlanNote(r.total) + fatHTML();
       if (S.meal.items.some(function (x) { return x.est; })) h += '<div class="note warn">Hay cantidades estimadas por la IA. Revísalas antes de fiarte del resultado.</div>';
       if (r.capped) h += '<div class="note warn">El cálculo supera tu dosis máxima configurada (' + fu(num(S.cfg.maxBolus)) + '); se ha limitado a ese tope.</div>';
       if (!r.hasGlucose && !c.g.bad) h += '<div class="note warn">Sin glucosa: solo se ha calculado la parte de la comida.</div>';
@@ -591,13 +689,18 @@
   }
   function vLog() {
     if (logSeg === 'analisis') return vAnalysis();
-    var h = segHTML() + '<div class="ways3"><button data-act="dose">' + ICON.pencil + 'Dosis suelta</button><button data-act="exercise">' + ICON.run + 'Ejercicio</button>' + (hasBasal() ? '<button data-act="basal">' + ICON.pen + 'Lenta</button>' : '') + '</div>';
+    var h = segHTML() + '<div class="ways3"><button data-act="dose">' + ICON.pencil + 'Dosis suelta</button><button data-act="exmenu">' + ICON.run + 'Ejercicio</button>' + (hasBasal() ? '<button data-act="basal">' + ICON.pen + 'Lenta</button>' : '') + '</div>';
     if (!S.log.length) h += '<section class="card"><p class="mut">Cuando registres una comida o una dosis aparecerá aquí.</p></section>';
     var lastDay = '', cutDay = new Date(); cutDay.setHours(0, 0, 0, 0); cutDay = cutDay.getTime() - (logDays - 1) * 864e5;
     var more = S.log.some(function (e) { return e.t < cutDay; });
     S.log.filter(function (e) { return e.t >= cutDay; }).sort(function (x, y) { return y.t - x.t; }).forEach(function (e) {
       var d = new Date(e.t), day = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
       if (day !== lastDay) { h += '<div class="day">' + esc(day) + '</div>'; lastDay = day; }
+      if (e.ins === 'cetonas') {
+        var kr2 = Guides.ketone(e.mmol);
+        h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · Cetonas ' + fmt(e.mmol, 1) + ' mmol/L</b><small>' + esc(kr2 ? kr2.t.split('.')[0] : '') + '</small></div><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
+        return;
+      }
       if (e.ins === 'animo') {
         h += '<section class="card" style="padding:6px 14px"><div class="item" style="border:none"><div class="nm"><b>' + hm(e.t) + ' · ' + Coach.moodFace(e.mood) + ' Ánimo</b><small>' + esc(Coach.MOODS[e.mood - 1][2]) + ((e.tags || []).length ? ' · ' + esc(e.tags.join(', ')) : '') + (e.glucose != null ? ' · ' + fmt(e.glucose, 0) + ' mg/dL' : '') + '</small></div><button class="x" data-act="dellog" data-t="' + e.t + '" aria-label="Borrar">✕</button></div></section>';
         return;
@@ -642,7 +745,7 @@
     var rows = ['fecha;hora;tipo;franja;hidratos_g;glucosa_mgdl;tendencia;sugerido_U;puesto_U;glucosa_3h;alimentos'];
     S.log.slice().sort(function (x, y) { return x.t - y.t; }).forEach(function (e) {
       var d = new Date(e.t);
-      rows.push([d.toLocaleDateString('es-ES'), hm(e.t), e.ins === 'basal' ? 'lenta' : e.ins === 'hipo' ? 'bajada' : e.ins === 'ejercicio' ? 'ejercicio' : e.ins === 'animo' ? 'animo' : 'rapida', e.slot || '', fmt(e.carbs || 0, 1), e.glucose != null ? e.glucose : '', TREND[e.trend] ? TREND[e.trend][1] : '', e.sug != null ? fmt(e.sug, 2) : '', fmt(e.u || 0, 2), e.post && !e.post.none ? e.post.g3 : '', '"' + String(e.items || e.name || '').replace(/"/g, '""') + '"'].join(';'));
+      rows.push([d.toLocaleDateString('es-ES'), hm(e.t), e.ins === 'basal' ? 'lenta' : e.ins === 'hipo' ? 'bajada' : e.ins === 'ejercicio' ? 'ejercicio' : e.ins === 'animo' ? 'animo' : e.ins === 'cetonas' ? 'cetonas' : 'rapida', e.slot || '', fmt(e.carbs || 0, 1), e.glucose != null ? e.glucose : '', TREND[e.trend] ? TREND[e.trend][1] : '', e.sug != null ? fmt(e.sug, 2) : '', fmt(e.u || 0, 2), e.post && !e.post.none ? e.post.g3 : '', '"' + String(e.items || e.name || '').replace(/"/g, '""') + '"'].join(';'));
     });
     return rows.join('\n');
   }
@@ -659,6 +762,7 @@
   }
   function vSettings() {
     var h = '<button class="pri big" data-act="wizard">Asistente de configuración</button>' +
+      '<div class="grp">Lo básico</div>' +
       '<section class="card"><h2>Tus insulinas</h2>' + sel('Rápida (comidas)', 'cfg.rapid', [['', '—']].concat(RAPIDS.map(function (x) { return [x, x]; }))) + sel('Lenta', 'cfg.basal', [['', '—']].concat(BASALS.map(function (x) { return [x, x]; }))) +
       (hasBasal() ? '<div class="grid2"><div>' + field('Dosis fija de lenta (U)', 'cfg.basalDose') + '</div><div>' + field('Hora a la que te la pones', 'cfg.basalTime', 'type="time"') + '</div></div>' +
         sel('Aviso diario si no la has apuntado', 'cfg.basalRemind', [['1', 'Sí, avisarme a esa hora'], ['0', 'No']]) +
@@ -683,7 +787,8 @@
       field('Versión que se anuncia a LibreLinkUp (avanzado)', 'libre.version', '') +
       (native ? '<div class="row" style="margin-top:10px"><button data-act="libretest">Probar lectura</button></div>' : '<p class="fine">La lectura solo funciona en la app instalada; desde un navegador no es posible.</p>') +
       '<p class="fine">El correo y la contraseña se guardan solo en este dispositivo.</p></section>';
-    h += kitSettingsHTML() + bgSettingsHTML();
+    h += '<div class="grp">Avisos, reloj y material</div>' + bgSettingsHTML() + kitSettingsHTML();
+    h += '<div class="grp">Comida</div>';
     var pv = S.ai.provider, P = Vision.PROVIDERS[pv];
     h += '<section class="card"><h2>Foto del plato con IA (opcional)</h2><p class="mut">Si lo activas, en Comida aparecen «Describir» y «Foto». Lo que escribas o la foto se envía al servicio que elijas, que propone alimentos y gramos aproximados para que los revises. Necesita internet y una clave de ese servicio.</p>' +
       sel('Estimación por foto', 'ai.on', [['0', 'Desactivada'], ['1', 'Activada']]) +
@@ -696,6 +801,7 @@
       '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (aiOn() ? '<div class="row"><button data-act="label">' + ICON.tag + ' Añadir desde la foto de una etiqueta</button></div>' : '') + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
+    h += '<div class="grp">Aspecto y seguridad</div>';
     h += '<section class="card"><h2>Aspecto y modo noche</h2>' +
       sel('Tema', 'cfg.theme', [['dark', 'Oscuro'], ['light', 'Claro'], ['auto', 'Como el móvil']]) +
       sel('Modo noche', 'cfg.night', [['1', 'Automático'], ['0', 'No']]) +
@@ -704,7 +810,7 @@
     h += '<section class="card"><h2>Colores y gráfica</h2><p class="mut">La tarjeta de glucosa sale verde dentro de tu rango, amarilla por encima, naranja por encima del aviso de alta y roja por debajo.</p>' +
       '<div class="grid2"><div>' + field('Rango: desde (mg/dL)', 'cfg.rangeLow') + '</div><div>' + field('Rango: hasta (mg/dL)', 'cfg.rangeHigh') + '</div></div>' +
       field('Aviso de glucosa alta (mg/dL) · línea naranja', 'cfg.alto') + '</section>';
-    h += backupHTML();
+    h += backupHTML() + diagHTML();
     h += '<p class="fine" style="padding:0 6px">iocrino ' + VERSION + ' · Ayuda de cálculo personal, no un producto sanitario. Los valores de la tabla de alimentos son aproximados; manda la etiqueta.</p>';
     view.innerHTML = collapse(h);
   }
@@ -1225,7 +1331,7 @@
   async function nativeSync() {
     var nb = nativeBg(); if (!nb) return;
     var nw = nightWindow();
-    var cfg = { high: S.bg.high !== '0', night: S.cfg.night !== '0', nightFrom: nw[0], nightTo: nw[1], mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
+    var cfg = { sick: !!S.sick.on, high: S.bg.high !== '0', night: S.cfg.night !== '0', nightFrom: nw[0], nightTo: nw[1], mealTimes: mealTimes(), sensorStart: S.kit.sensorT || 0, predict: S.bg.predict !== '0', xdrip: S.bg.xdrip === '1', on: S.bg.on === '1' && libreOn(), persist: S.bg.persist === '1', missed: S.bg.missed === '1', low: S.bg.low === '1', email: S.libre.email, password: S.libre.password, version: S.libre.version || Libre.DEFAULT_VERSION,
       session: S.libre.session || null, lastRapid: lastRapidT(), missedOff: S.missedOff || 0, lo: num(S.cfg.rangeLow) || 70, hi: num(S.cfg.rangeHigh) || 180, hypo: num(S.cfg.hypo) || 70, alto: num(S.cfg.alto) || 250 };
     var last = gNow().v !== null && S.now.src === 'libre' ? { v: gNow().v, trend: +S.now.trend || 0, t: S.now.t } : null;
     var h6 = S.hist.filter(function (p) { return p[0] > Date.now() - 6 * 3600e3; });
@@ -1257,7 +1363,7 @@
     try { await nb.runNow(); toast('Lectura en segundo plano lanzada. El widget se actualizará en unos segundos.'); } catch (e) { msgDlg('Segundo plano', 'Esta instalación no tiene la parte nativa: ' + (e && e.message || e)); }
   }
   function bgSettingsHTML() {
-    return '<section class="card"><h2>Con la app cerrada</h2><p class="mut">Los avisos de bajada en camino van mejor con la <b>glucosa fija</b> activada, porque así se lee el Libre cada minuto. Si solo activas la lectura con la app cerrada, el móvil lee cada 15 minutos aproximadamente aunque no abras iocrino. Sirve para el <b>widget</b> de la pantalla de inicio y para los avisos de abajo. Android puede retrasarlo un poco con el ahorro de batería.</p>' +
+    return '<section class="card"><h2>Avisos y lectura automática</h2><p class="mut">Los avisos de bajada en camino van mejor con la <b>glucosa fija</b> activada, porque así se lee el Libre cada minuto. Si solo activas la lectura con la app cerrada, el móvil lee cada 15 minutos aproximadamente aunque no abras iocrino. Sirve para el <b>widget</b> de la pantalla de inicio y para los avisos de abajo. Android puede retrasarlo un poco con el ahorro de batería.</p>' +
       sel('Leer el Libre con la app cerrada', 'bg.on', [['0', 'No'], ['1', 'Sí']]) +
       sel('Avisar si estás alto y subiendo', 'bg.high', [['1', 'Sí (más de 250 con flecha hacia arriba, sin rápida en 2 h)'], ['0', 'No']]) +
       sel('Avisar de una bajada antes de que llegue', 'bg.predict', [['1', 'Sí (unos 20 min antes, según cómo bajas)'], ['0', 'No']]) +
@@ -1406,7 +1512,7 @@
     '<p>Funciona en los Galaxy Watch con Wear OS (Watch4 y posteriores). Los modelos antiguos con Tizen (Watch3, Active2 y anteriores) no son compatibles.</p>' +
     '<p>Además, los avisos de iocrino (la lenta, «vuelve a mirar en 15 minutos») ya te llegan al reloj solos si tienes activadas las notificaciones del móvil en la app Galaxy Wearable.</p></details>';
   WATCH += '<details class="how"><summary>Ver la glucosa en una Amazfit Bip (o Mi Band)</summary><p>Esos relojes no dejan que otras apps les manden datos en directo, pero <b>xDrip+</b> (gratis) sí sabe ponerles una esfera con la glucosa. iocrino le pasa cada lectura y xDrip+ se encarga del reloj.</p><ol>' +
-    '<li>En iocrino: Ajustes → Con la app cerrada → «Enviar la glucosa a xDrip+: Sí» y activa la <b>glucosa fija</b> (para que lea cada minuto).</li>' +
+    '<li>En iocrino: Ajustes → Avisos y lectura automática → «Enviar la glucosa a xDrip+: Sí» y activa la <b>glucosa fija</b> (para que lea cada minuto).</li>' +
     '<li>Instala <b>xDrip+</b> desde su web oficial (no está en Google Play).</li>' +
     '<li>En xDrip+: Ajustes → Fuente de datos (Hardware Data Source) → <b>Libre2 (patched app)</b>. En pocos minutos deberían entrar tus lecturas.</li>' +
     '<li>En xDrip+: Ajustes → Funciones de reloj (Smart Watch Features) → <b>MiBand</b>: actívalo y pon la dirección Bluetooth (MAC) de tu Bip, que sale en la app Zepp o en Ajustes del reloj.</li>' +
@@ -1446,13 +1552,18 @@
   function render() {
     applyTheme();
     Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
-    if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else if (tab === 'aprende') vLearn(); else vSettings();
+    try { if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else if (tab === 'aprende') vLearn(); else vSettings(); }
+    catch (e) {
+      logErr('pantalla ' + tab + ': ' + (e && e.stack ? String(e.stack).split('\n').slice(0, 2).join(' ') : e));
+      view.innerHTML = '<section class="card"><h2>Algo ha fallado en esta pantalla</h2><p>Tus datos están a salvo. Prueba a volver a Ahora; si se repite, en Ajustes → «Si algo falla» puedes copiar el error para que lo arreglemos.</p><button class="pri big" data-act="goto" data-v="ahora">Volver a Ahora</button></section>';
+    }
     if (tab !== 'comida') renderSum();
   }
 
   document.addEventListener('input', function (e) {
     var t = e.target; if (!t.dataset) return;
     if (t.id === 'qn') { qtyPrev(); return; }
+    if (t.id === 'kv') { ketoPrev(); return; }
     if (t.dataset.s === 'cfg.ratioAll') { S.cfg.ratioAll = t.value.trim(); SLOTS.forEach(function (x) { S.cfg.ratios[x[0]] = S.cfg.ratioAll; }); save(); return; }
     if (t.dataset.s) {
       setPath(t.dataset.s, t.value.trim ? t.value.trim() : t.value);
@@ -1563,6 +1674,28 @@
       }
       case 'guide': dlgGuide(); break;
       case 'ig': dlgIg(b.dataset.v); break;
+      case 'sickon': dlgSickOn(); break;
+      case 'sickyes': S.sick = { on: 1, since: Date.now() }; save(); closeDlg(); scheduleSick(); nativeSync(); tab = 'ahora'; render(); window.scrollTo(0, 0); break;
+      case 'sickinfo': tab = 'ahora'; render(); var sk = $('.sick'); if (sk && sk.scrollIntoView) sk.scrollIntoView({ behavior: 'smooth' }); break;
+      case 'sickoff': confirmDlg('¿Ya te encuentras bien? Se quitan los recordatorios del modo enfermo.', function () { S.sick = { on: 0, since: 0 }; save(); scheduleSick(); nativeSync(); render(); toast('Me alegro. Modo enfermo desactivado'); }); break;
+      case 'sickhelp': dlgSickHelp(); break;
+      case 'keto': dlgKeto(); break;
+      case 'ketosave': {
+        var kvv = num(($('#kv') || {}).value); if (kvv === null || kvv < 0 || kvv > 15) { toast('Revisa el número'); break; }
+        S.log.push({ t: Date.now(), ins: 'cetonas', carbs: 0, mmol: kvv, glucose: gNow().v }); save(); closeDlg(); render();
+        var kr = Guides.ketone(kvv); msgDlg('Cetonas: ' + fmt(kvv, 1), kr.t); break;
+      }
+      case 'exmenu': dlgExMenu(); break;
+      case 'explan': dlgExPlan(); break;
+      case 'exsel': { var kk2 = b.dataset.k, vv = b.dataset.v; exSel[kk2] = kk2 === 'min' || kk2 === 'when' ? +vv : kk2 === 'meal' ? vv === 'true' : vv; var sc = dlg.scrollTop; dlgExPlan(); dlg.scrollTop = sc; break; }
+      case 'explansave': {
+        var cut = exSel.meal ? Guides.bolusCut(exSel.level, exSel.min) : null;
+        S.exPlan = { t: Date.now() + exSel.when * 60000, kind: exSel.kind, level: exSel.level, min: exSel.min, cut: cut }; save(); closeDlg(); render();
+        toast(cut ? 'Plan guardado: al calcular la comida verás la dosis con el ' + cut + ' % menos' : 'Plan guardado'); break;
+      }
+      case 'useex': { var cc2 = compute(); openDlg('<h3>Registrar</h3><p class="mut">' + fmt(cc2.carbs, 1) + ' g de hidratos · con el ejercicio: ' + fu(+b.dataset.v) + '</p><label>Unidades de ' + esc(rapidName()) + ' que te has puesto de verdad</label><input id="ru" inputmode="decimal" value="' + String(b.dataset.v).replace('.', ',') + '"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="logsave">Registrar</button></div>'); break; }
+      case 'errcopy': { var txt = S.errs.map(function (e) { return new Date(e.t).toISOString() + ' v' + e.v + ' ' + e.m; }).join('\n'); if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function () { toast('Copiado'); }, function () { msgDlg('Fallos', txt); }); else msgDlg('Fallos', txt); break; }
+      case 'errclear': S.errs = []; save(); render(); break;
       case 'tipmore': if (extraLeft() > 0) { S.coach.extraDate = dayKey(); S.coach.extraN = (S.coach.extraDate === dayKey() ? (S.coach.extraN || 0) : 0) + 1; unlockTip(''); S.coach.newTip = 0; save(); render(); } break;
       case 'mood': moodSel = +b.dataset.v || 0; moodTags = []; dlgMood(); break;
       case 'moodpick': moodSel = +b.dataset.v; Array.prototype.forEach.call(document.querySelectorAll('#mf .face'), function (c) { c.classList.toggle('on', c === b); }); break;

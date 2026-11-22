@@ -1,0 +1,14 @@
+const assert = require('assert');
+const G = require('../www/js/guides.js');
+assert.strictEqual(G.preExercise(80).k, 'low'); assert.strictEqual(G.preExercise(100).k, 'carb10'); assert.strictEqual(G.preExercise(150).k, 'ok');
+assert.strictEqual(G.preExercise(200).k, 'high'); assert.strictEqual(G.preExercise(300).k, 'ketones'); assert.strictEqual(G.preExercise(null).k, 'nog');
+assert.strictEqual(G.bolusCut('suave', 30), 25); assert.strictEqual(G.bolusCut('suave', 60), 50);
+assert.strictEqual(G.bolusCut('moderado', 30), 50); assert.strictEqual(G.bolusCut('moderado', 60), 75);
+assert.strictEqual(G.bolusCut('intenso', 30), 75); assert.strictEqual(G.bolusCut('intenso', 60), null);
+const p = G.exercisePlan({ g: 110, level: 'moderado', min: 60, kind: 'fondo', meal: true });
+assert.strictEqual(p.cut, 75); assert.strictEqual(p.pre.k, 'carb10'); assert.ok(p.tips.length >= 2);
+assert.strictEqual(G.exercisePlan({ g: 150, level: 'moderado', min: 60, meal: false }).cut, null);
+assert.strictEqual(G.ketone('0,4').k, 'normal'); assert.strictEqual(G.ketone(1).k, 'algo'); assert.strictEqual(G.ketone(2).k, 'alta'); assert.strictEqual(G.ketone(3.2).k, 'muy');
+assert.strictEqual(G.ketone('x'), null);
+assert.ok(G.SICK_RULES.length >= 5 && G.SICK_HELP.length >= 4);
+console.log('guías: todas las pruebas pasan');

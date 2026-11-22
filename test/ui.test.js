@@ -13,7 +13,7 @@ function boot(stored, pre) {
   w.scrollTo = () => {};
   w.HTMLElement.prototype.scrollIntoView = () => {};
   if (stored) w.localStorage.setItem('raciones.v1', JSON.stringify(stored));
-  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
+  ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'guides', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
 let w = boot(), d = w.document;
@@ -73,9 +73,9 @@ click(act('basal')); $('#bu').value = '14'; click(act('basalsave'));
 assert.ok(text().includes('14 U · hace 0 min'));
 assert.ok(text().includes('Fiasp activa')); assert.ok($('.kv b').textContent.startsWith('0 U'), 'la lenta no suma: ' + $('.kv b').textContent);
 
-// Ahora → botón grande «Calcular comida»
+// Ahora → botón grande «Voy a comer»
 click($('[data-tab="ahora"]'));
-click($('button.big[data-act="goto"]'));
+click($('.qa.main[data-act="goto"]'));
 assert.ok($('[data-tab="comida"]').classList.contains('on'));
 assert.ok($('.gstrip'));
 
@@ -301,6 +301,7 @@ w.close();
     await v09();
     v010();
     await v011();
+    await v022();
     console.log('interfaz: todas las pruebas pasan');
   })().catch((e) => { console.error(e); process.exit(1); });
 }
@@ -338,7 +339,7 @@ async function v09() {
   const s15 = sched.find((n) => n.id === 7100); assert.ok(s15 && Math.abs(new Date(s15.schedule.at).getTime() - (hp.t + 15 * M)) < 2000);
   assert.ok(vt().includes('Vuelve a mirar tu glucosa en')); assert.ok(!q('.lowbtn'));
   w.__raciones.state().hipoCheck = Date.now() - 1000; w.__raciones.render();
-  assert.ok(vt().includes('Han pasado 15 minutos')); k(q('[data-act="hipook"]')); assert.strictEqual(w.__raciones.state().hipoCheck, 0); assert.ok(q('.lowbtn'));
+  assert.ok(vt().includes('Han pasado 15 minutos')); k(q('[data-act="hipook"]')); assert.strictEqual(w.__raciones.state().hipoCheck, 0); assert.ok(q('[data-act="hipo"]'));
   // La bajada no es una comida ni insulina
   assert.ok(vt().includes('Fiasp activa'));
   // Informe
@@ -424,14 +425,14 @@ async function v011() {
   k(q('[data-act="log"]')); q('#ru').value = '6'; k(q('[data-act="logsave"]')); await tick();
   assert.ok(st.log.slice(-1)[0].fat); assert.ok(sched.some((n) => n.id === 7200));
   // Ejercicio
-  k(q('[data-tab="registro"]')); k(q('[data-act="exercise"]')); k(q('#exw [data-act="exwhat"]:nth-child(2)')); q('#exm').value = '50'; k(q('[data-act="exsave"]'));
+  k(q('[data-tab="registro"]')); k(q('[data-act="exmenu"]')); k(q('[data-act="exercise"]')); k(q('#exw [data-act="exwhat"]:nth-child(2)')); q('#exm').value = '50'; k(q('[data-act="exsave"]'));
   const ex = st.log.find((e) => e.ins === 'ejercicio'); assert.ok(ex && ex.what === 'Correr' && ex.min === 50);
   assert.ok(q('#dlg').textContent.includes('antes de dormir')); k(q('[data-act="close"]'));
   assert.ok(vt().includes('Ejercicio'));
   st.meal.items = [{ name: 'Pan', hc100: 50, grams: '40' }]; k(q('[data-tab="comida"]')); assert.ok(vt().includes('Hiciste ejercicio'));
   // Ajustes: material y segundo plano
   k(q('[data-tab="registro"]')); k(q('[data-act="logseg"][data-v="analisis"]')); assert.ok(vt().includes('Tus últimos 7 días')); k(q('[data-act="logseg"][data-v="diario"]'));
-  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('xDrip+')); assert.ok(vt().includes('Con la app cerrada'));
+  k(q('[data-tab="ajustes"]')); assert.ok(vt().includes('Material: sensor y plumas')); assert.ok(vt().includes('xDrip+')); assert.ok(vt().includes('Avisos y lectura automática'));
   k(q('[data-act="kitnew"][data-v="rapidT"]')); k(q('[data-act="yes"]')); assert.ok(st.kit.rapidT > 0); await tick(); assert.ok(sched.some((n) => n.id === 7310));
   const ps = q('[data-s="bg.persist"]'); ps.value = '1'; ps.dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
   assert.ok(calls.filter((c) => c[0] === 'set').pop()[1].persist === true); assert.ok(vt().includes('LockStar'));
@@ -474,5 +475,45 @@ async function v011() {
   for (let d = 1; d <= 12; d++) st.log.push({ t: t0 - d * D, ins: 'basal', u: 30, carbs: 0, name: 'Tresiba' });
   k(q('[data-tab="registro"]')); assert.ok(q('[data-act="logmore"]')); const n1 = w.document.querySelectorAll('.day').length; k(q('[data-act="logmore"]'));
   assert.ok(w.document.querySelectorAll('.day').length > n1);
+  w.close();
+}
+
+// ---- 0.22: botones de inicio, modo enfermo, ejercicio y red de seguridad ----
+async function v022() {
+  const t0 = Date.now(), sched = [];
+  const notif = { registerActionTypes: async () => {}, addListener: () => Promise.resolve({ remove() {} }), cancel: async () => {}, checkPermissions: async () => ({ display: 'granted' }), requestPermissions: async () => ({ display: 'granted' }), schedule: async (o) => { o.notifications.forEach((n) => sched.push(n)); } };
+  const cfg = { ratioMode: 'g', ratios: { desayuno: '10', comida: '10', merienda: '10', cena: '10' }, isf: '50', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', basalDose: '30', setup: 'ok', night: '0', step: '0.5' };
+  const w = boot({ cfg, now: { v: '110', trend: 3, t: t0 - 60000, src: 'libre' } }, (win) => { win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : null) }; });
+  const tick = () => new Promise((r) => setTimeout(r, 40));
+  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  // Botones de «¿Qué quieres hacer?»
+  assert.ok(vt().includes('¿Qué quieres hacer?')); ['goto', 'hipo', 'basalquick', 'exmenu', 'sickon'].forEach((a) => assert.ok(q('.qgrid [data-act="' + a + '"]'), a));
+  // Modo enfermo
+  k(q('[data-act="sickon"]')); assert.ok(q('#dlg').textContent.includes('modo enfermo')); k(q('[data-act="sickyes"]')); await tick();
+  assert.ok(st.sick.on); assert.ok(q('.sick')); assert.ok(vt().includes('Nunca dejes la lenta')); assert.ok(sched.filter((n) => n.id >= 7800 && n.id < 7808).length === 8);
+  k(q('[data-act="keto"]')); q('#kv').value = '1,8'; q('#kv').dispatchEvent(new w.Event('input', { bubbles: true })); assert.ok(q('#kprev').textContent.includes('Llama hoy'));
+  k(q('[data-act="ketosave"]')); assert.ok(st.log.some((e) => e.ins === 'cetonas' && e.mmol === 1.8)); k(q('[data-act="close"]'));
+  assert.ok(vt().includes('Cetonas: 1,8'));
+  k(q('[data-act="sickhelp"]')); assert.ok(q('#dlg').textContent.includes('112')); k(q('[data-act="close"]'));
+  k(q('[data-act="sickoff"]')); k(q('[data-act="yes"]')); assert.ok(!st.sick.on); assert.ok(!q('.sick'));
+  // Ejercicio: plan antes, con la comida
+  k(q('[data-act="exmenu"]')); k(q('[data-act="explan"]'));
+  assert.ok(q('#dlg').textContent.includes('Entre 90 y 125'));
+  k(q('[data-act="exsel"][data-k="min"][data-v="60"]')); k(q('[data-act="exsel"][data-k="when"][data-v="60"]'));
+  assert.ok(q('#dlg').textContent.includes('75 %'));
+  k(q('[data-act="explansave"]')); assert.strictEqual(st.exPlan.cut, 75);
+  assert.ok(vt().includes('Plan para las'));
+  st.meal.items = [{ name: 'Pan', hc100: 50, grams: '80' }]; k(q('[data-tab="comida"]'));
+  assert.ok(vt().includes('Vas a hacer ejercicio')); k(q('[data-act="useex"]')); assert.ok(q('#ru').value === '1'); k(q('[data-act="close"]'));
+  // Ajustes agrupados y red de seguridad
+  k(q('[data-tab="ajustes"]')); assert.ok(w.document.querySelectorAll('.grp').length >= 4); assert.ok(vt().includes('Si algo falla'));
+  w.dispatchEvent(new w.ErrorEvent('error', { message: 'fallo de prueba', filename: 'x/app.js', lineno: 7 }));
+  assert.ok(st.errs.some((e) => e.m.includes('fallo de prueba')));
+  w.__raciones.render(); assert.ok(vt().includes('fallo de prueba'));
+  // Si una pantalla falla, no se queda en blanco
+  st.log.push({ t: Date.now(), ins: 'ejercicio', what: null, level: null, min: null, carbs: 0 });
+  const bad = st.coach; st.coach = null; k(q('[data-tab="aprende"]')); assert.ok(vt().includes('Algo ha fallado en esta pantalla')); st.coach = bad;
+  k(q('[data-act="goto"][data-v="ahora"]')); assert.ok(vt().includes('¿Qué quieres hacer?'));
   w.close();
 }

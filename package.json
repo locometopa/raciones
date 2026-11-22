@@ -1,10 +1,10 @@
 {
   "name": "iocrino",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": true,
   "description": "Calculadora personal de raciones de hidratos y bolo, con lectura del sensor Libre",
   "scripts": {
-    "test": "node test/calc.test.js && node test/libre.test.js && node test/chart.test.js && node test/vision.test.js && node test/learn.test.js && node test/report.test.js && node test/coach.test.js && node test/pdf.test.js && node test/ui.test.js",
+    "test": "node test/calc.test.js && node test/libre.test.js && node test/chart.test.js && node test/vision.test.js && node test/learn.test.js && node test/report.test.js && node test/coach.test.js && node test/pdf.test.js && node test/guides.test.js && node test/ui.test.js",
     "android": "node scripts/android.js"
   },
   "dependencies": {

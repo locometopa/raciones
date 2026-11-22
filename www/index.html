@@ -241,6 +241,14 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
 .qrow{display:flex;align-items:center;gap:10px}.qrow input{font-size:28px;font-weight:700;text-align:center}.qrow span{font-size:20px;color:var(--mut);min-width:34px}
 .qprev{margin:12px 0 4px;padding:12px;border-radius:12px;background:var(--info-bg);font-size:17px;text-align:center}
 .corr{border:1px solid var(--hi-b)}.corr .kv small{display:block;color:var(--mut);font-size:13px;margin-top:2px}.corr .cu{font-size:30px;white-space:nowrap}
+.qlab{margin:14px 4px 8px}
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.qgrid.one{grid-template-columns:1fr}
+.qa{display:flex;align-items:center;gap:12px;text-align:left;padding:14px;min-height:76px;border-radius:16px;background:var(--card)}
+.qa svg{width:30px;height:30px;flex:none;color:var(--acc)}.qa b{display:block;font-size:16px}.qa small{display:block;color:var(--mut);font-size:13px;margin-top:2px}
+.qa.main{grid-column:1/-1;background:var(--acc);color:var(--acc-ink);min-height:84px}.qa.main svg{color:var(--acc-ink)}.qa.main small{color:var(--acc-ink);opacity:.8}.qa.main b{font-size:19px}
+.qa.low svg{color:var(--lo-b)}.qa.on{box-shadow:inset 0 0 0 2px var(--hi-b)}.qa.on svg{color:var(--hi-b)}
+.sick{border:1px solid var(--hi-b)}.srules{padding-left:20px;margin:8px 0}.srules li{margin:6px 0;line-height:1.45;font-size:15px}
+.grp{margin:22px 6px 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--acc)}
 </style>
 </head>
 <body>
@@ -267,6 +275,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
 <script src="js/chart.js"></script>
 <script src="js/learn.js"></script>
 <script src="js/report.js"></script>
+<script src="js/guides.js"></script>
 <script src="js/pdf.js"></script>
 <script src="js/reportpdf.js"></script>
 <script src="js/coach.js"></script>

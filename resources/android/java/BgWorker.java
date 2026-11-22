@@ -135,6 +135,11 @@ public class BgWorker extends Worker {
                 p.edit().putLong("predT", now).apply();
             }
         }
+        // Modo enfermo: por encima de 250, medir cetonas (como mucho cada 3 h, también de noche)
+        if (cfg.optBoolean("sick", false) && rd.v > 250 && now - p.getLong("sickT", 0) > 3 * H) {
+            notify(c, 7405, "Modo enfermo: " + rd.v + " mg/dL", "Estás por encima de 250: mide cetonas, bebe agua y no dejes la lenta. Apunta el resultado en iocrino.", "Apuntar cetonas", GlucoseWidget.open(c, "ahora", 24));
+            p.edit().putLong("sickT", now).apply();
+        }
         // Alto y subiendo, sin rápida en 2 h: que abra la app para ver la corrección sugerida (de noche también: es seguridad)
         if (cfg.optBoolean("high", true) && rd.v > cfg.optInt("alto", 250) && (rd.trend == 4 || rd.trend == 5)
                 && now - cfg.optLong("lastRapid", 0) > 2 * H && now - p.getLong("highT", 0) > 2 * H) {
