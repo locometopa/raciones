@@ -55,7 +55,7 @@ assert.strictEqual(S().cfg.setup, 'ok'); assert.strictEqual(S().cfg.ratios.cena,
 assert.ok($('[data-tab="ahora"]').classList.contains('on'));
 assert.ok($('.gcard.none')); assert.ok(text().includes('Toca para escribirla'));
 assert.ok(text().includes('Sin lecturas'));
-assert.ok($('#sum').hidden);
+assert.ok($('#sum').textContent.includes('Plato vacío') || $('#sum').hidden);
 
 // Glucosa a mano desde la tarjeta → color según rango
 setGlucose(150, 3);
@@ -93,6 +93,7 @@ assert.ok(text().includes('56 g'), 'hidratos del arroz');
 assert.ok(text().includes('5,6 raciones'));
 // Glucosa 60: hipoglucemia, sin dosis; la barra fija lo dice
 assert.ok(text().includes('No se sugiere dosis')); assert.ok(!$('.dose'));
+assert.ok($('#sum').textContent.includes('Siguiente')); click(act('mnext')); assert.ok($('#sum').textContent.includes('Ver mi dosis')); click(act('mnext'));
 assert.ok(!$('#sum').hidden); assert.ok($('#sum').textContent.includes('Glucosa baja'));
 // Glucosa 180 bajando: 8,4 + 2 = 10,4 → 10,5 y aviso de flecha
 setGlucose(180, 2);
@@ -133,7 +134,7 @@ click($('[data-tab="comida"]'));
 click(act('manual')); $('#mhg').value = '20'; click(act('mhsave'));
 assert.ok($('.dose b').textContent.startsWith('0'), 'con insulina activa: ' + $('.dose b').textContent);
 click(act('del'));
-assert.ok($('#sum').hidden, 'sin alimentos no hay barra');
+assert.ok($('#sum').hidden || $('#sum').textContent.includes('Plato vacío'), 'sin alimentos no se puede seguir');
 assert.ok(text().includes('Aún está vacío'));
 assert.ok(!act('describe'), 'sin IA no sale Describir'); assert.ok(text().includes('Activa la IA'));
 // Ración normal de un toque

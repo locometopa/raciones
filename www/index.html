@@ -254,12 +254,21 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
 .habit .qa.main{margin-bottom:10px}.chip.fav small{color:var(--mut);font-weight:400;margin-left:4px}.chip.fav.on small{color:inherit}
 .mlist{display:flex;flex-direction:column;gap:8px;margin:8px 0}.mlist button{display:flex;justify-content:space-between;align-items:center;text-align:left;padding:12px 14px;border-radius:12px;background:var(--card2)}
 .mlist button.on{box-shadow:inset 0 0 0 2px var(--acc)}.mlist b{display:block}.mlist small{color:var(--mut)}
+#sum.wbar{background:var(--card);color:var(--ink);padding:8px;gap:8px;box-shadow:0 -2px 18px rgba(0,0,0,.35),0 0 0 1px var(--line)}
+#sum.wbar .wl{flex:1;min-width:0;padding:0 6px;font-size:14px;line-height:1.3}#sum.wbar .wl b{font-size:16px}#sum.wbar .wl small{color:var(--mut);opacity:1}
+#sum.wbar button{min-height:52px;border-radius:14px;padding:0 18px;font-size:16px;font-weight:700;white-space:nowrap}
+#sum.wbar .wn{background:var(--acc);color:var(--acc-ink)}#sum.wbar .wn[disabled]{opacity:.45}#sum.wbar .wb{background:var(--card2)}
+.mstep{display:none}.mstep.on{display:block}
+.wprog{display:flex;gap:6px;margin:4px 0 6px}.wprog i{flex:1;height:6px;border-radius:3px;background:var(--card2)}.wprog i.on{background:var(--acc)}
+.wtitle{font-size:22px;font-weight:800;margin:6px 2px 2px}.wsub{color:var(--mut);margin:0 2px 12px;font-size:15px}
+.plate-mini{display:flex;flex-wrap:wrap;gap:6px}.plate-mini span{background:var(--card2);border-radius:10px;padding:6px 10px;font-size:14px}
+.netres button{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left}.netres small{display:block;color:var(--mut)}
 </style>
 </head>
 <body>
 <header><h1><svg class="logo" viewBox="70 70 372 372" aria-hidden="true"><circle cx="256" cy="256" r="178" fill="#5ccbbb"/><circle cx="256" cy="256" r="140" fill="none" stroke="#479089" stroke-width="14"/><path d="M256 150L316.3 252.5A70 70 0 1 1 195.7 252.5Z" fill="#fff"/></svg>iocrino</h1></header>
 <main id="view"></main>
-<button id="sum" data-act="tores" hidden></button>
+<div id="sum" hidden></div>
 <nav id="nav">
   <button data-tab="ahora"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.2 2.8 11a1 1 0 0 0 1.3 1.5l.9-.8V20a1 1 0 0 0 1 1h4.5v-5.5h3V21H18a1 1 0 0 0 1-1v-8.3l.9.8a1 1 0 1 0 1.3-1.5z"/></svg>Ahora</button>
   <button data-tab="comida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11M17 21V3c-2.2 1.2-3.5 4-3.5 8H17"/></svg>Comida</button>
