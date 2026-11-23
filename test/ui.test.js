@@ -552,5 +552,11 @@ function v023() {
   const li = st.meal.items.findIndex((x) => /^Leche/.test(x.name)); assert.strictEqual(st.meal.items[li].grams, '250');
   k(q('[data-act="measure"][data-i="' + li + '"]')); assert.ok(q('#dlg').textContent.includes('Tazón grande'));
   k(q('[data-act="mpick"][data-v="200"]')); assert.strictEqual(st.meal.items[li].grams, '200');
+  // Con práctica (10 comidas) se ofrece el modo rápido; nunca cambia solo
+  for (let j = 0; j < 10; j++) st.log.push({ t: Date.now() - j * 3600000, ins: 'rapida', u: 2, carbs: 30, items: 'Pan' });
+  w.__raciones.render(); assert.ok(q('[data-act="mfast"]'), 'ofrece modo rápido'); assert.ok(!w.document.querySelector('#view').classList.contains('mfast'));
+  k(q('[data-act="mfast"]')); assert.strictEqual(st.cfg.mealMode, 'rapido');
+  assert.ok(w.document.querySelector('#view').classList.contains('mfast'), 'todo en una pantalla'); assert.ok(q('#sum [data-act="tores"]'), 'barra de resumen');
+  assert.ok(!q('[data-act="mfast"]'), 'ya no lo vuelve a ofrecer');
   w.close();
 }

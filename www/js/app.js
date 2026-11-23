@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.25.0';
+  var VERSION = '0.25.1';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -331,7 +331,9 @@
     var m = S.meal, slot = curSlot(), h = stripHTML();
     h += '<div class="chips slots">' + SLOTS.map(function (s) { return '<button class="chip' + (s[0] === slot ? ' on' : '') + '" data-act="slot" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
     if (!m.items.length) mstep = 1;
-    h += '<div class="wprog">' + [1, 2, 3].map(function (n) { return '<i class="' + (n <= mstep ? 'on' : '') + '"></i>'; }).join('') + '</div>';
+    if (offerFast()) h += '<section class="card coach"><b>Ya tienes práctica (' + mealsDone() + ' comidas)</b><p style="margin:4px 0 10px">¿Prefieres verlo todo en una sola pantalla, sin pasos? Puedes volver al modo guiado cuando quieras en Ajustes.</p><div class="row"><button class="pri" data-act="mfast">Sí, modo rápido</button><button class="ghost" data-act="mguide">Seguir guiado</button></div></section>';
+    if (!guided()) mstep = 3;
+    else h += '<div class="wprog">' + [1, 2, 3].map(function (n) { return '<i class="' + (n <= mstep ? 'on' : '') + '"></i>'; }).join('') + '</div>';
     h += '<div class="mstep" data-s="1"><div class="wtitle">1. ¿Qué vas a comer?</div><p class="wsub">Toca lo que vayas a comer. Cuando lo tengas todo, pulsa <b>Siguiente</b> abajo.</p>';
     h += habitsHTML(slot);
     h += '<section class="card"><h2>' + (habits(slot).favs.length ? '¿Algo más? Búscalo' : '¿Qué vas a comer?') + '</h2>' +
@@ -343,7 +345,7 @@
     if (S.recent.length) h += '<div class="lab">Lo último que has tomado</div><div class="chips">' + S.recent.slice(0, 8).map(function (r, i) { return '<button class="chip" data-act="recent" data-i="' + i + '">' + esc(r.name) + '</button>'; }).join('') + '</div>';
     if (S.plates.length) h += '<div class="lab">Repetir un plato guardado</div><div class="chips">' + S.plates.map(function (p, i) { return '<button class="chip" data-act="useplate" data-i="' + i + '">' + esc(p.name) + ' · ' + fmt(Calc.mealCarbs(p.items), 0) + ' g</button>'; }).join('') + '</div>';
     h += '</section>';
-    if (m.items.length) h += '<section class="card"><h2>Ya en tu plato</h2><div class="plate-mini">' + m.items.map(function (it) { return '<span>' + esc(it.name) + '</span>'; }).join('') + '</div></section>';
+    if (m.items.length) h += '<section class="card pmini"><h2>Ya en tu plato</h2><div class="plate-mini">' + m.items.map(function (it) { return '<span>' + esc(it.name) + '</span>'; }).join('') + '</div></section>';
     h += '</div>';
     h += '<div class="mstep" data-s="2"><div class="wtitle">2. ¿Cuánto vas a comer?</div><p class="wsub">Ajusta cada cosa con <b>−</b> y <b>+</b> o con <b>Medidas de casa</b> (vaso, plato, rebanada…). Luego pulsa <b>Ver mi dosis</b>.</p>';
     h += '<section class="card"><h2>En tu plato' + (m.items.length ? ' · ' + m.items.length : '') + '</h2><div id="items">';
@@ -367,7 +369,13 @@
   }
   /* Pasos de la comida: solo se ve uno a la vez y abajo hay una única barra con Atrás / Siguiente. */
   var mstep = 1;
+  /* Guiado al principio; con práctica se ofrece el modo rápido (todo en una pantalla). Nunca cambia solo. */
+  var GUIDE_N = 10;
+  function mealsDone() { return S.log.filter(function (e) { return e.ins === 'rapida' && e.items; }).length; }
+  function guided() { return S.cfg.mealMode !== 'rapido'; }
+  function offerFast() { return S.cfg.mealMode !== 'rapido' && S.cfg.mealMode !== 'guiado' && mealsDone() >= GUIDE_N; }
   function showStep() {
+    view.classList.toggle('mfast', !guided());
     Array.prototype.forEach.call(document.querySelectorAll('.mstep'), function (el) { el.classList.toggle('on', +el.dataset.s === mstep); });
     Array.prototype.forEach.call(document.querySelectorAll('.wprog i'), function (el, i) { el.classList.toggle('on', i < mstep); });
     renderSum();
@@ -434,6 +442,7 @@
     if (!show) return;
     c = c || compute();
     var n = S.meal.items.length, info = n ? '<b>' + n + (n === 1 ? ' cosa' : ' cosas') + '</b> · ' + fmt(c.carbs, 0) + ' g HC' : '<small>Plato vacío</small>';
+    if (!guided()) { sumBar.hidden = !n; document.body.classList.toggle('hassum', !!n); if (n) sumBar.innerHTML = '<button class="wn" data-act="tores" style="flex:1;display:flex;justify-content:space-between;align-items:center"><span><b>' + fmt(c.carbs, 1) + ' g</b> · ' + fmt(c.carbs / Calc.RACION, 1) + ' rac.</span><span>' + (c.r.ok ? fu(c.r.total) : c.r.reason === 'hypo' ? 'Glucosa baja' : 'Faltan pautas') + ' ›</span></button>'; return; }
     if (mstep === 1) sumBar.innerHTML = '<span class="wl">' + info + (n ? '' : '<br><small>Elige algo para seguir</small>') + '</span><button class="wn" data-act="mnext"' + (n ? '' : ' disabled') + '>Siguiente ›</button>';
     else if (mstep === 2) sumBar.innerHTML = '<button class="wb" data-act="mprev">‹ Atrás</button><span class="wl">' + info + '</span><button class="wn" data-act="mnext"' + (n ? '' : ' disabled') + '>Ver mi dosis ›</button>';
     else sumBar.innerHTML = '<button class="wb" data-act="mprev">‹ Cantidades</button><span class="wl">' + info + '<br><small>' + (c.r.ok ? 'Sugerencia: ' + fu(c.r.total) : c.r.reason === 'hypo' ? 'Glucosa baja: sin dosis' : 'Faltan pautas') + '</small>' + '</span>';
@@ -499,7 +508,7 @@
     S.meal.items.push(it); save(); closeDlg(); tab = 'comida';
     var qi = $('#qi'); if (qi) qi.value = '';
     render();
-    toast('Añadido. Elige más cosas o pulsa «Siguiente» abajo');
+    toast(guided() ? 'Añadido. Elige más cosas o pulsa «Siguiente» abajo' : 'Añadido');
   }
   /* Lo que sueles comer en esta franja (últimos 60 días) y tu última comida de esa franja, para repetir con un toque. */
   var SLOTNAME = { desayuno: 'el desayuno', comida: 'la comida', merienda: 'la merienda', cena: 'la cena' };
@@ -902,7 +911,8 @@
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (aiOn() ? '<div class="row"><button data-act="label">' + ICON.tag + ' Añadir desde la foto de una etiqueta</button></div>' : '') + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
     h += '<div class="grp">Aspecto y seguridad</div>';
-    h += '<section class="card"><h2>Aspecto y modo noche</h2>' +
+    h += '<section class="card"><h2>Aspecto, modo noche y comidas</h2>' +
+      sel('Al apuntar una comida', 'cfg.mealMode', [['', 'Guiado paso a paso (recomendado al empezar)'], ['guiado', 'Guiado siempre'], ['rapido', 'Rápido: todo en una pantalla']]) +
       sel('Tema', 'cfg.theme', [['dark', 'Oscuro'], ['light', 'Claro'], ['auto', 'Como el móvil']]) +
       sel('Modo noche', 'cfg.night', [['1', 'Automático'], ['0', 'No']]) +
       (S.cfg.night !== '0' ? '<div class="grid2"><div>' + field('Desde', 'cfg.nightFrom', 'type="time"') + '</div><div>' + field('Hasta', 'cfg.nightTo', 'type="time"') + '</div></div>' : '') +
@@ -1692,6 +1702,8 @@
       case 'close': closeDlg(); break;
       case 'yes': { var fn = pending; pending = null; closeDlg(); if (fn) fn(); break; }
       case 'goto': tab = b.dataset.v; render(); window.scrollTo(0, 0); break;
+      case 'mfast': S.cfg.mealMode = 'rapido'; save(); render(); toast('Modo rápido. Puedes volver al guiado en Ajustes'); break;
+      case 'mguide': S.cfg.mealMode = 'guiado'; save(); render(); break;
       case 'mnext': if (S.meal.items.length) goStep(mstep + 1); break;
       case 'mprev': goStep(mstep - 1); break;
       case 'netsearch': netSearch(); break;
@@ -1743,7 +1755,7 @@
       case 'photocam': $('#cam').click(); break;
       case 'photogal': $('#gal').click(); break;
       case 'photoadd':
-        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); var it0 = $('#items'); if (it0 && it0.scrollIntoView) it0.parentNode.scrollIntoView({ behavior: 'smooth', block: 'start' }); mstep = 2; showStep(); toast('Añadido. Revisa las cantidades y pulsa «Ver mi dosis»'); }
+        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); var it0 = $('#items'); if (it0 && it0.scrollIntoView) it0.parentNode.scrollIntoView({ behavior: 'smooth', block: 'start' }); mstep = 2; showStep(); toast(guided() ? 'Añadido. Revisa las cantidades y pulsa «Ver mi dosis»' : 'Añadido. Revisa las cantidades'); }
         break;
       case 'useplate': usePlate(i); break;
       case 'saveplate': openDlg('<h3>Guardar como plato</h3><label>Nombre del plato</label><input id="pn" placeholder="Desayuno de diario…"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="platesave">Guardar</button></div>'); break;
