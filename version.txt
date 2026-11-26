@@ -1,0 +1,2 @@
+iocrino 0.27.0 - APK firmada - commit d66ba3fe147dace5d1018725f3079c77dd71fadf
+Huella del certificado (SHA-256): f52519f9e1f0a0356a3c6efc14fa6e7eb6eb17206a737e1508c9a1a1f7ed83c6
