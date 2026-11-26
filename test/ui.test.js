@@ -16,11 +16,22 @@ function boot(stored, pre) {
   ['calc', 'foods', 'libre', 'vision', 'chart', 'learn', 'report', 'guides', 'measures', 'pdf', 'reportpdf', 'coach', 'app'].forEach((f) => w.eval(fs.readFileSync(path.join(www, 'js', f + '.js'), 'utf8')));
   return w;
 }
+// Si algo ya no está en pantalla, se busca en la hoja de Herramientas (como haría el usuario).
+function findOrTool(win, sel) {
+  const doc = win.document; let el = doc.querySelector(sel); if (el) return el;
+  const m = /^(?:\.qgrid )?\[data-act="([^"]+)"\](?:\[data-v="([^"]+)"\])?$/.exec(sel);
+  const tb = doc.querySelector('[data-act="tools"]');
+  if (!m || !tb) return null;
+  tb.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  el = doc.querySelector('#dlg [data-act="tool"][data-v="' + m[1] + '"]');
+  if (!el) { const c = doc.querySelector('#dlg [data-act="close"]'); if (c) c.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); }
+  return el;
+}
 let w = boot(), d = w.document;
 const $ = (s) => d.querySelector(s);
 const click = (el) => { assert.ok(el, 'falta un elemento para pulsar'); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
 const type = (el, v) => { assert.ok(el, 'falta un campo'); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
-const act = (a) => $('[data-act="' + a + '"]');
+const act = (a) => findOrTool(w, '[data-act="' + a + '"]');
 const text = () => $('#view').textContent;
 const S = () => w.__raciones.state();
 const setGlucose = (v, trend) => {
@@ -75,7 +86,7 @@ assert.ok(text().includes('Fiasp activa')); assert.ok($('.kv b').textContent.sta
 
 // Ahora → botón grande «Voy a comer»
 click($('[data-tab="ahora"]'));
-click($('.qa.main[data-act="goto"]'));
+click($('.eat[data-act="goto"]')); assert.ok(!$('.qgrid'), 'Ahora sin rejilla de botones');
 assert.ok($('[data-tab="comida"]').classList.contains('on'));
 assert.ok($('.gstrip'));
 
@@ -231,7 +242,7 @@ w.close();
   for (let i = 1; i <= 6; i++) log.push({ t: t0 - i * D, ins: 'rapida', slot: 'cena', carbs: 60, u: 6, glucose: 120, iob: 0, items: 'Pizza', post: { g1: 220, g2: 240, g3: 250, max: 260, min: 115 } });
   w = boot({ cfg, log, now: { v: '150', trend: 4, t: t0 - 60000, src: 'libre' }, meal: { items: [{ name: 'Hidratos a mano', hcDirect: '30' }], slot: 'comida' } });
   d = w.document;
-  const q = (sel) => d.querySelector(sel), vt = () => q('#view').textContent;
+  const q = (sel) => findOrTool(w, sel), vt = () => q('#view').textContent;
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   assert.ok(!q('#dlg').textContent.includes('Vamos'), 'ya configurado: sin asistente');
   // Guía desde Aprende
@@ -273,7 +284,7 @@ w.close();
   const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok', basalDose: '30', basalTime: '23:59', basalRemind: '1' };
   w = boot({ cfg, log: [] }, (win) => { win.Capacitor = { isNativePlatform: () => true, registerPlugin: () => fake }; });
   d = w.document;
-  const q = (sel) => d.querySelector(sel), vt = () => q('#view').textContent;
+  const q = (sel) => findOrTool(w, sel), vt = () => q('#view').textContent;
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const tick = () => new Promise((r) => setTimeout(r, 30));
   (async () => {
@@ -284,7 +295,7 @@ w.close();
     assert.strictEqual(new Date(last[0].schedule.at).getHours(), 23); assert.ok(last[0].body.includes('30 U'));
     assert.strictEqual(last[0].actionTypeId, 'BASAL');
     // Un toque apunta 30 U y el aviso de hoy desaparece
-    assert.ok(vt().includes('Apuntar 30 U')); k(q('[data-act="basalquick"]')); await tick();
+    assert.ok(q('[data-act="basalquick"]').textContent.includes('Apuntar 30 U')); k(q('[data-act="basalquick"]')); await tick();
     const lb = w.__raciones.state().log.filter((e) => e.ins === 'basal');
     assert.strictEqual(lb.length, 1); assert.strictEqual(lb[0].u, 30);
     assert.ok(vt().includes('✓ hoy')); assert.ok(!q('[data-act="basalquick"]'));
@@ -320,7 +331,7 @@ async function v09() {
     win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : null) };
     win.fetch = async (url, opt) => { puts.push({ url, opt }); return { status: 201, json: async () => ({}) }; };
   });
-  const d = w.document, q = (s) => d.querySelector(s), vt = () => q('#view').textContent;
+  const d = w.document, q = (s) => findOrTool(w, s), vt = () => q('#view').textContent;
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const tick = () => new Promise((r) => setTimeout(r, 30));
   await tick();
@@ -376,12 +387,12 @@ function v010() {
   const cfg = { ratioMode: 'r', ratios: { desayuno: '1', comida: '1', merienda: '1', cena: '1' }, isf: '24', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', setup: 'ok', basalDose: '30' };
   const log = []; for (let k = 0; k < 9; k++) log.push({ t: t0 - (k + 1) * 6 * H, ins: 'rapida', slot: 'comida', carbs: 40, u: 4 });
   const w = boot({ cfg, log, hist, now: { v: '115', trend: 3, t: t0 - M, src: 'libre' } });
-  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent;
+  const q = (s) => findOrTool(w, s), vt = () => q('#view').textContent;
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const st = w.__raciones.state();
   // Ánimo en rango y truco del día (contextual: Fiasp/Tresiba)
   assert.ok(q('.coach.ok'), 'mensaje de ánimo en rango'); assert.ok(/rango/.test(q('.coach').textContent));
-  assert.strictEqual(st.coach.unlocked.length, 1); assert.ok(q('.tipline'));
+  assert.strictEqual(st.coach.unlocked.length, 1); assert.ok(st.coach.tipId); assert.ok(q('[data-tab="aprende"]').classList.contains('dot'), 'aviso de truco nuevo en Aprende');
   assert.strictEqual(st.coach.used.length, 1);
   // Logros ya conseguidos al instalar: se marcan sin felicitar
   assert.ok(st.coach.ach.includes('primera')); assert.ok(!st.coach.ach.includes('comidas10'));
@@ -412,7 +423,7 @@ async function v011() {
   });
   const tick = () => new Promise((r) => setTimeout(r, 60));
   await tick(); await tick();
-  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const q = (s) => findOrTool(w, s), vt = () => q('#view').textContent, st = w.__raciones.state();
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // Lo leído con la app cerrada entra en el historial; y se manda la config a la parte nativa
   assert.ok(st.hist.some((p) => p[1] === 160)); assert.strictEqual(st.now.v, '160');
@@ -487,10 +498,11 @@ async function v022() {
   const cfg = { ratioMode: 'g', ratios: { desayuno: '10', comida: '10', merienda: '10', cena: '10' }, isf: '50', target: '100', dia: '4', rapid: 'Fiasp', basal: 'Tresiba', basalDose: '30', setup: 'ok', night: '0', step: '0.5' };
   const w = boot({ cfg, now: { v: '110', trend: 3, t: t0 - 60000, src: 'libre' } }, (win) => { win.Capacitor = { isNativePlatform: () => true, registerPlugin: (n) => (n === 'LocalNotifications' ? notif : null) }; });
   const tick = () => new Promise((r) => setTimeout(r, 40));
-  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const q = (s) => findOrTool(w, s), vt = () => q('#view').textContent, st = w.__raciones.state();
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   // Botones de «¿Qué quieres hacer?»
-  assert.ok(vt().includes('¿Qué quieres hacer?')); ['goto', 'hipo', 'basalquick', 'exmenu', 'sickon'].forEach((a) => assert.ok(q('.qgrid [data-act="' + a + '"]'), a));
+  assert.ok(q('.eat[data-act="goto"]') && q('[data-act="tools"]')); assert.ok(!vt().includes('¿Qué quieres hacer?'), 'Ahora limpio');
+  k(q('[data-act="tools"]')); ['hipo', 'basalquick', 'exmenu', 'sickon', 'dose', 'report'].forEach((a) => assert.ok(w.document.querySelector('#dlg [data-act="tool"][data-v="' + a + '"]'), a)); k(w.document.querySelector('#dlg [data-act="close"]'));
   // Modo enfermo
   k(q('[data-act="sickon"]')); assert.ok(q('#dlg').textContent.includes('modo enfermo')); k(q('[data-act="sickyes"]')); await tick();
   assert.ok(st.sick.on); assert.ok(q('.sick')); assert.ok(vt().includes('Nunca dejes la lenta')); assert.ok(sched.filter((n) => n.id >= 7800 && n.id < 7808).length === 8);
@@ -505,7 +517,7 @@ async function v022() {
   k(q('[data-act="exsel"][data-k="min"][data-v="60"]')); k(q('[data-act="exsel"][data-k="when"][data-v="60"]'));
   assert.ok(q('#dlg').textContent.includes('75 %'));
   k(q('[data-act="explansave"]')); assert.strictEqual(st.exPlan.cut, 75);
-  assert.ok(vt().includes('Plan para las'));
+  assert.ok(q('[data-act="exmenu"]').textContent.includes('Plan para las')); k(w.document.querySelector('#dlg [data-act="close"]'));
   st.meal.items = [{ name: 'Pan', hc100: 50, grams: '80' }]; k(q('[data-tab="comida"]'));
   assert.ok(vt().includes('Vas a hacer ejercicio')); k(q('[data-act="useex"]')); assert.ok(q('#ru').value === '1'); k(q('[data-act="close"]'));
   // Ajustes agrupados y red de seguridad
@@ -516,7 +528,7 @@ async function v022() {
   // Si una pantalla falla, no se queda en blanco
   st.log.push({ t: Date.now(), ins: 'ejercicio', what: null, level: null, min: null, carbs: 0 });
   const bad = st.coach; st.coach = null; k(q('[data-tab="aprende"]')); assert.ok(vt().includes('Algo ha fallado en esta pantalla')); st.coach = bad;
-  k(q('[data-act="goto"][data-v="ahora"]')); assert.ok(vt().includes('¿Qué quieres hacer?'));
+  k(q('[data-act="goto"][data-v="ahora"]')); assert.ok(q('.eat'));
   w.close();
 }
 
@@ -528,7 +540,7 @@ function v023() {
   const log = [];
   for (let d = 1; d <= 3; d++) log.push({ t: now - d * D, ins: 'rapida', slot: slotNow, carbs: 40, u: 4, items: [{ name: 'Pan blanco', hc100: 50, grams: '40' }, { name: 'Manzana', hc100: 12, grams: '150', portion: 150 }] });
   const w = boot({ cfg, log, meal: { items: [], slot: 'comida' }, lastQty: { 'Pan blanco': 40, Manzana: 150 }, now: { v: '120', trend: 3, t: now - 60000, src: 'manual' } });
-  const q = (s) => w.document.querySelector(s), vt = () => q('#view').textContent, st = w.__raciones.state();
+  const q = (s) => findOrTool(w, s), vt = () => q('#view').textContent, st = w.__raciones.state();
   const k = (el) => { assert.ok(el); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   k(q('[data-tab="comida"]'));
   assert.ok(vt().includes('Lo de siempre')); assert.ok(q('[data-act="repeat"]'));
@@ -577,7 +589,7 @@ function v023() {
       return { status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(out) } }] }) };
     };
   });
-  const q = (s) => w.document.querySelector(s), st = w.__raciones.state(), dt = () => q('#dlg').textContent;
+  const q = (s) => findOrTool(w, s), st = w.__raciones.state(), dt = () => q('#dlg').textContent;
   const k = (el) => { assert.ok(el, 'falta elemento'); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.ok(q('[data-act="aiwhy"]').textContent.includes('¿Por qué estoy alto?'));

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.26.0';
+  var VERSION = '0.27.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -183,18 +183,6 @@
       '<p class="fine">Orientativo, con tus pautas. Tú decides; si algo no cuadra, mídete en el dedo.</p></section>';
   }
 
-  /* Botones grandes de «¿Qué quieres hacer?» en Ahora: todo lo del día a día a un toque. */
-  function quickHTML(lowish) {
-    var tile = function (act, icon, t, sub, cls) { return '<button class="qa' + (cls ? ' ' + cls : '') + '" data-act="' + act + '">' + icon + '<span><b>' + t + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</span></button>'; };
-    var h = '<div class="lab qlab">¿Qué quieres hacer?</div><div class="qgrid">';
-    h += tile('goto" data-v="comida', ICON.food, S.meal.items.length ? 'Seguir con la comida' : 'Voy a comer', S.meal.items.length ? S.meal.items.length + ' en el plato' : 'Calculo la dosis', 'main');
-    if (!S.hipoCheck && !lowish) h += tile('hipo', ICON.drop, 'Estoy bajo', 'Qué tomar', 'low');
-    if (hasBasal()) h += tile(basalDoneToday() ? 'goto" data-v="registro' : (num(S.cfg.basalDose) > 0 ? 'basalquick' : 'basal'), ICON.pen, basalName(), basalDoneToday() ? '✓ apuntada hoy' : 'Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : ''));
-    h += tile('exmenu', ICON.run, 'Ejercicio', exPlanActive() ? 'Plan para las ' + hm(S.exPlan.t) : 'Antes o después');
-    h += tile(S.sick.on ? 'sickinfo' : 'sickon', ICON.therm, S.sick.on ? 'Modo enfermo' : 'Estoy enfermo', S.sick.on ? 'Activado' : 'Fiebre, vómitos…', S.sick.on ? 'on' : '');
-    return h + '</div>';
-  }
-
   // ---------- modo enfermo ----------
   function sickHTML() {
     if (!S.sick.on) return '';
@@ -282,7 +270,6 @@
       (x.arrow ? '<span class="arr">' + x.arrow + '</span>' : '') + '<span class="un">mg/dL</span></span>' +
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += (corrHidden > Date.now() ? '' : corrHTML()) + coachHTML(x);
-    if (aiOn() && x.g.v !== null && !x.old && (x.g.v > (num(S.cfg.rangeHigh) || 180) || x.g.v < (num(S.cfg.rangeLow) || 70))) h += '<button class="ghost aiwhy" data-act="aiwhy">' + ICON.spark + ' ¿Por qué estoy ' + (x.g.v < (num(S.cfg.rangeLow) || 70) ? 'bajo' : 'alto') + '? Pregúntale a la IA</button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
     var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
@@ -294,8 +281,10 @@
     h += kitDueHTML();
     if (!configured()) h += '<div class="note info">Faltan tus pautas para calcular la dosis. <button class="ghost" data-act="wizard">Configurar en 2 minutos</button></div>';
     h += sickHTML();
-    h += quickHTML(lowish);
-    h += moodCardHTML() + supportHTML();
+    /* Lo principal, grande y solo: comer. Lo demás vive en Herramientas. */
+    h += '<button class="pri big eat" data-act="goto" data-v="comida">' + ICON.food + '<span>' + (S.meal.items.length ? 'Seguir con la comida <small>' + S.meal.items.length + ' en el plato</small>' : 'Voy a comer <small>Te calculo la dosis</small>') + '</span></button>';
+    if (basalPending()) h += '<button class="basalpend" data-act="' + (num(S.cfg.basalDose) > 0 ? 'basalquick' : 'basal') + '">' + ICON.pen + '<span>Te falta la <b>' + esc(basalName()) + '</b> de hoy</span><b>Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : '') + '</b></button>';
+    h += '<button class="toolsbtn" data-act="tools"><span><b>Herramientas</b><small>Lenta, ejercicio, enfermo, ánimo, IA, informe…</small></span><span aria-hidden="true">›</span></button>';
 
     var now = Date.now(), dots = [];
     S.log.forEach(function (e) { if (e.glucose != null) dots.push({ t: e.t, v: e.glucose }); });
@@ -312,8 +301,29 @@
       (hasBasal() ? '<div class="kv basalrow' + (basalDoneToday() ? ' hecha' : '') + '"><span>' + esc(basalName()) + ' (lenta)<small>' + (lastB ? fu(lastB.u) + ' · ' + agoText(lastB.t) : 'sin apuntar') + (num(S.cfg.basalDose) > 0 && S.cfg.basalTime ? ' · aviso a las ' + esc(S.cfg.basalTime) : '') + '</small></span>' +
         (basalDoneToday() ? '<span class="ok">✓ hoy</span>' : '<span class="mut">pendiente</span>') + '</div>' : '') +
       (num(S.cfg.dia) > 0 ? '' : '<p class="fine">Pon la duración de tu insulina en Ajustes para ver la insulina activa.</p>') + '</section>';
-    h += tipHTML();
     view.innerHTML = h;
+  }
+  /* La lenta solo se recuerda en Ahora si toca: no puesta hoy y ya es su hora (o no hay hora fijada y es por la tarde). */
+  function basalPending() {
+    if (!hasBasal() || basalDoneToday()) return false;
+    var d = new Date(), mins = d.getHours() * 60 + d.getMinutes(), bt = String(S.cfg.basalTime || '').split(':');
+    return bt.length === 2 ? mins >= (+bt[0]) * 60 + (+bt[1]) - 30 : d.getHours() >= 21;
+  }
+  /* Herramientas: todo lo que no es del día a día, en una hoja aparte. */
+  function dlgTools() {
+    var x = gView(), out = x.g.v !== null && !x.old && (x.g.v > (num(S.cfg.rangeHigh) || 180) || x.g.v < (num(S.cfg.rangeLow) || 70));
+    var tile = function (act, icon, t, sub, w, cls) { return '<button class="qa' + (cls ? ' ' + cls : '') + '" data-act="tool" data-v="' + act + '"' + (w ? ' data-w="' + w + '"' : '') + '>' + icon + '<span><b>' + t + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</span></button>'; };
+    var h = '<h3>Herramientas</h3><div class="qgrid">';
+    if (hasBasal()) h += tile(num(S.cfg.basalDose) > 0 && !basalDoneToday() ? 'basalquick' : 'basal', ICON.pen, basalName(), basalDoneToday() ? '✓ puesta hoy' : 'Apuntar' + (num(S.cfg.basalDose) > 0 ? ' ' + fmt(num(S.cfg.basalDose), 1) + ' U' : ' la lenta'));
+    h += tile('dose', ICON.drop, 'Apuntar dosis', 'Corrección o suelta');
+    h += tile('hipo', ICON.drop, 'Estoy bajo', 'Qué tomar', '', 'low');
+    h += tile('exmenu', ICON.run, 'Ejercicio', exPlanActive() ? 'Plan para las ' + hm(S.exPlan.t) : 'Antes o después');
+    h += tile(S.sick.on ? 'sickinfo' : 'sickon', ICON.therm, S.sick.on ? 'Modo enfermo' : 'Estoy enfermo', S.sick.on ? 'Activado' : 'Fiebre, vómitos…', '', S.sick.on ? 'on' : '');
+    h += tile('mood', ICON.smile, '¿Cómo estás?', 'Apunta tu ánimo', '0');
+    if (aiOn()) h += tile('aiwhy', ICON.spark, out ? '¿Por qué estoy ' + (x.g.v < (num(S.cfg.rangeLow) || 70) ? 'bajo' : 'alto') + '?' : '¿Cómo voy hoy?', 'Pregúntale a la IA');
+    h += tile('report', ICON.share, 'Informe', 'Para el endocrino');
+    h += tile('editg', ICON.pencil, 'Glucosa a mano', 'Si mides en el dedo');
+    return openDlg(h + '</div><div class="acts"><button data-act="close">Cerrar</button></div>');
   }
 
   // ---------- vista: comida ----------
@@ -1740,6 +1750,7 @@
   function vLearn() {
     var x = gView(), st = coachStats(), m = coachMsg(x), h = '';
     S.coach.newTip = 0; save();
+    h += supportHTML() + moodCardHTML();
     h += '<div class="coach big ' + m.tone + '"><span class="ci">' + ({ ok: '★', info: 'i', warn: '!', bad: '!' }[m.tone] || 'i') + '</span><span>' + esc(m.text) + '</span></div>';
     h += '<section class="card"><h2>Tu día y tu semana</h2>' + (st.today.n >= 4 ? Coach.donut(st.today.tir, 'Hoy') : '<p class="mut">Cuando haya lecturas del Libre de hoy verás aquí tu tiempo en rango.</p>') +
       (st.week.some(function (d) { return d.tir != null; }) ? '<div class="lab">Últimos 7 días · % en rango</div>' + Coach.weekBars(st.week) : '') +
@@ -1770,7 +1781,7 @@
   // ---------- render y eventos ----------
   function render() {
     applyTheme();
-    Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
+    Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.tab === tab); if (b.dataset.tab === 'aprende') b.classList.toggle('dot', !!(S.coach && S.coach.newTip) && tab !== 'aprende'); });
     try { if (tab === 'ahora') vNow(); else if (tab === 'comida') vMeal(); else if (tab === 'registro') vLog(); else if (tab === 'aprende') vLearn(); else vSettings(); }
     catch (e) {
       logErr('pantalla ' + tab + ': ' + (e && e.stack ? String(e.stack).split('\n').slice(0, 2).join(' ') : e));
@@ -1807,6 +1818,8 @@
     if (navb) { tab = navb.dataset.tab; render(); window.scrollTo(0, 0); autoLibre(); return; }
     var b = e.target.closest && e.target.closest('[data-act]'); if (!b) return;
     var a = b.dataset.act, i = +b.dataset.i;
+    if (a === 'tool') { closeDlg(); var f = document.createElement('button'); f.dataset.act = b.dataset.v; if (b.dataset.w) f.dataset.v = b.dataset.w; f.hidden = true; document.body.appendChild(f); f.click(); f.remove(); return; }
+    if (a === 'tools') { dlgTools(); return; }
     switch (a) {
       case 'close': closeDlg(); break;
       case 'yes': { var fn = pending; pending = null; closeDlg(); if (fn) fn(); break; }
