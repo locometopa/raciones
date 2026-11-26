@@ -560,3 +560,52 @@ function v023() {
   assert.ok(!q('[data-act="mfast"]'), 'ya no lo vuelve a ofrecer');
   w.close();
 }
+
+// ---------- IA: ¿por qué?, permiso de datos, grasa y proteína, revisión semanal ----------
+(async () => {
+  const now = Date.now(), H = 3600e3;
+  const cfg = { ratioMode: 'g', ratios: { desayuno: '10', comida: '10', merienda: '10', cena: '10' }, isf: '50', target: '100', dia: '4', setup: 'ok', night: '0', step: '0.5', rangeLow: '70', rangeHigh: '180' };
+  const log = [{ t: now - 3 * H, ins: 'rapida', slot: 'comida', carbs: 90, u: 6, items: 'Pizza, Coca-Cola', fat: true, glucose: 130 }];
+  const hist = []; for (let m = 8 * 60; m >= 0; m -= 5) hist.push([now - m * 60000, 130 + Math.round((8 * 60 - m) / 6)]);
+  const calls = [];
+  const w = boot({ cfg, log, hist, now: { v: '250', trend: 4, t: now - 60000, src: 'manual' }, meal: { items: [], slot: 'comida' }, ai: { on: '1', provider: 'deepseek', keys: { deepseek: 'k' }, models: {}, url: '' } }, (win) => {
+    win.fetch = async (url, opt) => {
+      const b = JSON.parse(opt.body); calls.push({ url, b });
+      const sys = b.messages[0].content;
+      const out = /grasa y de proteína por 100 g, tal como/.test(sys) ? { alimentos: [{ nombre: 'Pizza', grasa_por_100g: 10, proteina_por_100g: 11 }], notas: '' }
+        : { resumen: 'La pizza tenía mucha grasa. Pon 2 U más.', puntos: ['Subida 3 h después de una comida grasa'], probar: ['Mira la glucosa a las 3 h'], medico: ['¿Reparto la dosis en comidas grasas?'] };
+      return { status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(out) } }] }) };
+    };
+  });
+  const q = (s) => w.document.querySelector(s), st = w.__raciones.state(), dt = () => q('#dlg').textContent;
+  const k = (el) => { assert.ok(el, 'falta elemento'); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
+  const tick = () => new Promise((r) => setTimeout(r, 20));
+  assert.ok(q('[data-act="aiwhy"]').textContent.includes('¿Por qué estoy alto?'));
+  k(q('[data-act="aiwhy"]')); assert.ok(dt().includes('No se envía tu nombre') || dt().includes('No</b> se envía') || dt().includes('se envía'), 'pide permiso'); assert.strictEqual(calls.length, 0);
+  k(q('[data-act="aiok"]')); await tick();
+  assert.strictEqual(st.ai.dataOk, '1');
+  const ctx = calls[0].b.messages[1].content;
+  assert.ok(ctx.includes('Glucosa actual: 250') && ctx.includes('comida de 90 g de hidratos (Pizza, Coca-Cola), con mucha grasa'), ctx.slice(0, 300));
+  assert.ok(!ctx.includes('@') && !/password|contraseña/i.test(ctx), 'sin datos personales');
+  assert.ok(dt().includes('Subida 3 h después') && dt().includes('Pregunta a tu médico'));
+  assert.ok(!dt().includes('2 U'), 'sin dosis'); assert.ok(dt().includes('He quitado 1 frase'));
+  k(q('[data-act="close"]'));
+  // Grasa y proteína con IA en el resultado de la comida
+  k(q('[data-tab="comida"]'));
+  w.__raciones.state().meal.items.push({ name: 'Pizza', hc100: 30, grams: '300' }); w.__raciones.render();
+  k(q('[data-act="mnext"]')); k(q('[data-act="mnext"]'));
+  k(q('[data-act="aimacro"]')); await tick();
+  assert.strictEqual(st.meal.items[0].fat100, 10);
+  assert.ok(q('#res').textContent.includes('Grasa · proteína') && q('#res').textContent.includes('30 g · 33 g · alta'), q('#res').textContent);
+  assert.ok(q('#res [data-act="fat"]').textContent.startsWith('✓'), 'marca comida grasa sola');
+  // Revisión semanal: ya no vuelve a pedir permiso y se guarda
+  k(q('[data-tab="registro"]')); k(q('[data-act="logseg"][data-v="analisis"]'));
+  k(q('[data-act="aiweek"]')); await tick();
+  assert.ok(dt().includes('Tu semana, explicada')); assert.ok(st.coach.aiReview && st.coach.aiReview.res.points.length === 1);
+  assert.ok(calls[calls.length - 1].b.messages[1].content.includes('Informe de 7 días'));
+  k(q('[data-act="close"]')); assert.ok(q('[data-act="aiweeklast"]'));
+  // Carta del restaurante: botón disponible
+  k(q('[data-tab="comida"]')); assert.ok(q('[data-act="menu"]'));
+  w.close();
+  console.log('ui IA: pasan');
+})().catch((e) => { console.error(e); process.exit(1); });

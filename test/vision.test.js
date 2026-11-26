@@ -82,5 +82,26 @@ const check = (r) => { assert.strictEqual(r.items.length, 2); assert.strictEqual
   assert.strictEqual(typeof last.body.messages[1].content, 'string');
   await assert.rejects(Vision.describe('  ', { provider: 'claude', key: 'k' }), (e) => e.code === 'cfg');
 
+  // ---------- nuevas funciones de IA ----------
+  // Carta (Gemini): platos con HC por ración y HC/100 g calculado
+  next = { body: { candidates: [{ content: { parts: [{ text: JSON.stringify({ platos: [{ nombre: 'Paella', gramos_racion: 350, hc_racion: 90, grasa: 'media', nota: '' }, { nombre: 'Raro', gramos_racion: 100, hc_racion: 300 }], notas: '' }) }] } }] } };
+  const mr = await Vision.menu('B64', { provider: 'gemini', key: 'g', model: 'm' });
+  assert.ok(last.url.includes('generateContent')); assert.strictEqual(last.body.contents[0].parts[0].inline_data.data, 'B64');
+  assert.strictEqual(mr.dishes.length, 1, 'descarta platos imposibles'); assert.strictEqual(mr.dishes[0].hc100, 25.7);
+  // Grasa y proteína (DeepSeek, solo texto, en el mismo orden)
+  next = { body: { choices: [{ message: { content: JSON.stringify({ alimentos: [{ nombre: 'Pizza', grasa_por_100g: 10, proteina_por_100g: 11 }, { nombre: 'Coca', grasa_por_100g: 0, proteina_por_100g: 0 }], notas: '' }) } }] } };
+  const mm = await Vision.macros([{ name: 'Pizza', grams: 300 }, { name: 'Coca', grams: 330 }], { provider: 'deepseek', key: 'd' });
+  assert.ok(last.url.startsWith('https://api.deepseek.com/chat/completions')); assert.ok(last.body.messages[1].content.includes('Pizza — 300 g'));
+  assert.deepStrictEqual(mm.per[0], { fat100: 10, prot100: 11 });
+  // ¿Por qué? : se quitan las frases con dosis o cambios de ratio
+  next = { body: { choices: [{ message: { content: '```json\n' + JSON.stringify({ resumen: 'Subiste tras la pizza. Ponte 2 U más.', puntos: ['La comida tenía mucha grasa', 'Aumenta tu ratio de la cena'], probar: ['Pinchar 15 min antes'], medico: ['¿Me conviene repartir la dosis en comidas grasas?'] }) + '\n```' } }] } };
+  const why = await Vision.why('contexto', { provider: 'deepseek', key: 'd' });
+  assert.strictEqual(why.summary, 'Subiste tras la pizza.'); assert.deepStrictEqual(why.points, ['La comida tenía mucha grasa']); assert.strictEqual(why.cut, 2);
+  assert.strictEqual(why.doctor.length, 1, 'una pregunta sin cifras se mantiene');
+  assert.ok(last.body.messages[0].content.includes('Nunca des cantidades de insulina'));
+  // Estimación de plato: guarda grasa y proteína si vienen
+  const pe = Vision.parseText(JSON.stringify({ alimentos: [{ nombre: 'Pizza', gramos: 300, hc_por_100g: 30, grasa_por_100g: 10, proteina_por_100g: 11, confianza: 'media' }], notas: '' }));
+  assert.strictEqual(pe.items[0].fat100, 10); assert.strictEqual(pe.items[0].prot100, 11);
+
   console.log('vision: todas las pruebas pasan');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '0.25.1';
+  var VERSION = '0.26.0';
   var KEY = 'raciones.v1';
   var SLOTS = [['desayuno', 'Desayuno'], ['comida', 'Comida'], ['merienda', 'Merienda'], ['cena', 'Cena']];
   var TREND = { 0: ['', 'Sin flecha'], 1: ['↓', 'Bajando rápido'], 2: ['↘', 'Bajando'], 3: ['→', 'Estable'], 4: ['↗', 'Subiendo'], 5: ['↑', 'Subiendo rápido'] };
@@ -39,7 +39,7 @@
     return {
       cfg: { ratioMode: 'r', ratios: { desayuno: '', comida: '', merienda: '', cena: '' }, isf: '', target: '', dia: '', iobMode: 'total', step: '1', maxBolus: '', hypo: '70', rangeLow: '70', rangeHigh: '180', alto: '250', rapid: '', basal: '', sameRatio: '1', ratioAll: '', setup: '', useTrend: '0', ratioLog: [], basalDose: '', basalTime: '', basalRemind: '1' },
       libre: { email: '', password: '', version: Libre.DEFAULT_VERSION, session: null, graph: [] },
-      ai: { on: '0', provider: 'claude', keys: {}, models: {}, url: '' },
+      ai: { on: '0', provider: 'claude', keys: {}, models: {}, url: '', dataOk: '' },
       now: { v: '', trend: 0, t: null, src: '' },
       custom: [], plates: [], log: [], recent: [], lastQty: {}, hist: [], hipoCheck: 0, missedOff: 0,
       backup: { url: '', user: '', pass: '', auto: '1', last: 0, err: '' },
@@ -282,6 +282,7 @@
       (x.arrow ? '<span class="arr">' + x.arrow + '</span>' : '') + '<span class="un">mg/dL</span></span>' +
       '<span class="gage" id="gage">' + (x.g.v !== null ? esc(ageText()) + (x.old ? ' · lectura antigua' : '') : (libreOn() ? 'Toca para leer el Libre' : 'Toca para escribirla')) + '</span></button>';
     h += (corrHidden > Date.now() ? '' : corrHTML()) + coachHTML(x);
+    if (aiOn() && x.g.v !== null && !x.old && (x.g.v > (num(S.cfg.rangeHigh) || 180) || x.g.v < (num(S.cfg.rangeLow) || 70))) h += '<button class="ghost aiwhy" data-act="aiwhy">' + ICON.spark + ' ¿Por qué estoy ' + (x.g.v < (num(S.cfg.rangeLow) || 70) ? 'bajo' : 'alto') + '? Pregúntale a la IA</button>';
     h += '<div class="subrow"><span class="mut">' + (x.g.v !== null && TREND[S.now.trend] && S.now.trend ? esc(TREND[S.now.trend][1]) : '') + '</span>' +
       (libreOn() ? '<button class="ghost" data-act="editg">Escribir a mano</button>' : native ? '<button class="ghost" data-act="goto" data-v="ajustes">Conectar el Libre</button>' : '<button class="ghost" data-act="editg">Escribir glucosa</button>') + '</div>';
     var lowish = x.g.v !== null && !x.old && (x.g.v < 80 || (x.g.v < 110 && (+S.now.trend === 1 || +S.now.trend === 2)));
@@ -339,7 +340,7 @@
     h += '<section class="card"><h2>' + (habits(slot).favs.length ? '¿Algo más? Búscalo' : '¿Qué vas a comer?') + '</h2>' +
       '<div class="sbox">' + ICON.search + '<input id="qi" data-f="qi" type="search" placeholder="Busca: arroz, pan, manzana…" autocomplete="off" enterkeyhint="search"></div><div id="qr" class="list"></div><div id="qnet"></div>' +
       '<div class="lab">O añádelo de otra forma</div><div class="ways">' +
-      (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') + way('label', ICON.tag, 'Etiqueta', 'Foto a la tabla del envase') : '') +
+      (aiOn() ? way('describe', ICON.spark, 'Describir', 'Cuéntale a la IA qué es') + way('photo', ICON.camera, 'Foto', 'La IA mira el plato') + way('label', ICON.tag, 'Etiqueta', 'Foto a la tabla del envase') + way('menu', ICON.food, 'Carta', 'Foto a la carta del restaurante') : '') +
       way('barcode', ICON.barcode, 'Código', 'Producto envasado') + way('manual', ICON.pencil, 'Hidratos', 'Ya sé los gramos de HC') + '</div>' +
       (aiOn() ? '' : '<p class="fine">Activa la IA en Ajustes para describir lo que vas a comer o hacerle una foto.</p>');
     if (S.recent.length) h += '<div class="lab">Lo último que has tomado</div><div class="chips">' + S.recent.slice(0, 8).map(function (r, i) { return '<button class="chip" data-act="recent" data-i="' + i + '">' + esc(r.name) + '</button>'; }).join('') + '</div>';
@@ -761,6 +762,104 @@
       '<div class="acts"><button data-act="close">Descartar</button><button class="pri" data-act="photoadd">Añadir a la comida</button></div>');
   }
 
+  // ---------- IA: carta, grasa, semana, ¿por qué? (explica y sugiere; nunca dosis) ----------
+  function aiName() { var c = aiCfg(); return Vision.PROVIDERS[c.provider].name.replace(/ \(.*\)$/, ''); }
+  var menuRes = null, aiPending = null;
+  function dlgMenu() {
+    photoMode = 'menu'; menuRes = null;
+    openDlg('<h3>Carta del restaurante</h3><p class="mut">Haz una foto a la carta y la IA te dirá los hidratos <b>aproximados</b> de cada plato, para elegir y apuntarlo. Si la carta es larga, mejor una foto por página.</p>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button data-act="photogal">Galería</button><button class="pri" data-act="photocam">Hacer foto</button></div>');
+  }
+  async function analyzeMenu(file) {
+    openDlg('<h3>Carta del restaurante</h3><p class="mut">Leyendo la carta…</p>');
+    try { var b64 = await Vision.fileToJpegBase64(file); showMenu(await Vision.menu(b64, aiCfg())); }
+    catch (e) { msgDlg('No se pudo leer la carta', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  function showMenu(r) {
+    menuRes = r;
+    if (!r.dishes.length) { msgDlg('Sin platos', 'La IA no ha encontrado platos en la foto.' + (r.notes ? ' ' + r.notes : '')); return; }
+    var srt = r.dishes.map(function (d, k) { return k; }).sort(function (a, b) { return r.dishes[a].hc - r.dishes[b].hc; });
+    openDlg('<h3>Hidratos por plato</h3><p class="mut">Por una ración normal. Ordenados de menos a más hidratos. Toca «Añadir» en lo que vayas a pedir.</p><div>' + srt.map(function (k) {
+      var d = r.dishes[k];
+      return '<div class="item"><div class="nm"><b>' + esc(d.name) + '</b><small>≈ ' + d.grams + ' g' + (d.fat ? ' · grasa ' + d.fat : '') + (d.note ? ' · ' + esc(d.note) : '') + '</small></div><span class="hc">' + d.hc + ' g</span><button class="ghost" data-act="menuadd" data-k="' + k + '">Añadir</button></div>';
+    }).join('') + '</div>' + (r.notes ? '<div class="note info">' + esc(r.notes) + '</div>' : '') +
+      '<div class="note warn">Son estimaciones de la IA: las raciones de cada restaurante cambian mucho. Al añadirlo podrás ajustar la cantidad.</div>' +
+      '<div class="acts"><button class="pri" data-act="menudone">Hecho</button></div>');
+  }
+  async function aiMacros() {
+    var its = S.meal.items.filter(function (x) { return num(x.grams) > 0; });
+    if (!its.length) { toast('Pon primero los gramos de cada cosa'); return; }
+    openDlg('<h3>Grasa y proteína</h3><p class="mut">Calculando con ' + esc(aiName()) + '…</p>');
+    try {
+      var r = await Vision.macros(its.map(function (x) { return { name: x.name, grams: num(x.grams) }; }), aiCfg());
+      its.forEach(function (x, i) { var q = r.per[i]; if (q && q.fat100 != null && q.prot100 != null) { x.fat100 = Math.round(q.fat100 * 10) / 10; x.prot100 = Math.round(q.prot100 * 10) / 10; } });
+      save(); closeDlg(); renderRes();
+      var m = macroTot(); toast(m ? (macroHigh(m) ? 'Comida con bastante grasa o proteína: te aviso a las 3 h' : 'Grasa y proteína normales') : 'No se ha podido estimar todo');
+    } catch (e) { msgDlg('No se pudo calcular', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  /* Lo que se envía: datos de glucosa, comidas e insulina, sin nombre, correo ni claves. */
+  function lineOf(e) {
+    var t = new Date(e.t).toLocaleString('es-ES', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    if (e.ins === 'rapida') return t + ' · ' + (e.carbs > 0 ? 'comida de ' + fmt(e.carbs, 0) + ' g de hidratos' + (e.items ? ' (' + String(e.items).slice(0, 120) + ')' : '') + (e.fat ? ', con mucha grasa' : '') + ', ' : (e.kind === 'comida' ? 'comida sin apuntar, ' : 'corrección, ')) + 'insulina rápida ' + fmt(e.u || 0, 1) + ' U' + (e.glucose != null ? ', glucosa al pincharse ' + fmt(e.glucose, 0) : '');
+    if (e.ins === 'basal') return t + ' · insulina lenta ' + fmt(e.u || 0, 1) + ' U';
+    if (e.ins === 'hipo') return t + ' · bajada' + (e.glucose != null ? ' a ' + e.glucose : '') + (e.what ? ', tomó ' + e.what : '');
+    if (e.ins === 'ejercicio') return t + ' · ejercicio: ' + e.what + ', ' + e.min + ' min, ' + String(e.level || '').toLowerCase();
+    if (e.ins === 'animo') return t + ' · ánimo: ' + (e.mood || '') + (e.tags && e.tags.length ? ' (' + e.tags.join(', ') + ')' : '');
+    if (e.ins === 'cetonas') return t + ' · cetonas ' + e.mmol + ' mmol/L';
+    return '';
+  }
+  function baseCtx() {
+    return 'Rango objetivo: ' + (num(S.cfg.rangeLow) || 70) + '–' + (num(S.cfg.rangeHigh) || 180) + ' mg/dL. Insulina rápida: ' + rapidName() + (hasBasal() ? '; lenta: ' + basalName() : '') + '. Duración de la rápida: ' + (num(S.cfg.dia) || 4) + ' h.' + (S.sick.on ? ' Ahora está en modo enfermo.' : '');
+  }
+  function whyCtx() {
+    var now = Date.now(), g = gNow(), tr = +S.now.trend;
+    var pts = [], last = 0;
+    S.hist.forEach(function (p) { if (p[0] > now - 8 * 3600e3 && p[0] - last >= 15 * 60000) { pts.push(hm(p[0]) + ' ' + p[1]); last = p[0]; } });
+    var lg = S.log.filter(function (e) { return e.t > now - 10 * 3600e3; }).sort(function (a, b) { return a.t - b.t; }).map(lineOf).filter(Boolean);
+    return baseCtx() + '\nAhora son las ' + hm(now) + '. Glucosa actual: ' + (g.v != null ? fmt(g.v, 0) + ' mg/dL' : 'desconocida') + (tr && TREND[tr] ? ', ' + TREND[tr][1].toLowerCase() : '') + '. Insulina rápida aún activa: ' + fmt(activeInsulin(), 1) + ' U.' +
+      '\nGlucosas de las últimas 8 h (cada 15 min): ' + (pts.length ? pts.join(', ') : 'no hay datos del sensor') +
+      '\nLo apuntado en las últimas 10 h:\n' + (lg.length ? lg.join('\n') : 'nada');
+  }
+  function weekCtx() {
+    var now = Date.now(), r = weeklyData();
+    var rep = Report.text(Report.build({ hist: S.hist, log: S.log, cfg: S.cfg, now: now, days: 7 }), 'iocrino');
+    var lg = S.log.filter(function (e) { return e.t > now - 7 * 864e5; }).sort(function (a, b) { return a.t - b.t; }).map(lineOf).filter(Boolean);
+    return baseCtx() + '\n' + Coach.weeklyText(r) + '\n' + (r.patterns.length ? 'Patrones detectados: ' + r.patterns.map(function (q) { return q.x; }).join(' ') + '\n' : '') +
+      'Informe de 7 días:\n' + rep + '\nRegistro de la semana:\n' + (lg.length ? lg.slice(-150).join('\n') : 'nada apuntado');
+  }
+  function aiAsk(kind) {
+    if (S.ai.dataOk === '1') return aiRun(kind);
+    aiPending = kind;
+    openDlg('<h3>Antes de preguntar a la IA</h3><p>Para contestarte se envía a <b>' + esc(aiName()) + '</b> un resumen de tus glucosas, comidas, insulina y notas' + (kind === 'week' ? ' de la última semana' : ' de las últimas horas') + '. <b>No</b> se envía tu nombre, tu correo ni tus contraseñas.</p><p class="fine">Lo usa tu propia clave y lo cobra ese servicio, como las fotos.</p>' +
+      '<div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="aiok">De acuerdo, enviar</button></div>');
+  }
+  async function aiRun(kind) {
+    openDlg('<h3>' + (kind === 'week' ? 'Tu semana' : '¿Por qué?') + '</h3><p class="mut">' + esc(aiName()) + ' está mirando tus datos…</p>');
+    try {
+      var res = kind === 'week' ? await Vision.review(weekCtx(), aiCfg()) : await Vision.why(whyCtx(), aiCfg());
+      if (kind === 'week') { S.coach.aiReview = { t: Date.now(), res: res }; save(); }
+      showReview(kind, res, Date.now());
+      if (tab === 'registro') render();
+    } catch (e) { msgDlg('No se pudo preguntar a la IA', e && e.message ? e.message : 'Error desconocido'); }
+  }
+  var lastReview = null;
+  function showReview(kind, res, t) {
+    lastReview = { kind: kind, res: res, t: t };
+    var low = kind === 'why' && gNow().v !== null && gNow().v < (num(S.cfg.rangeLow) || 70);
+    var list = function (title, arr) { return arr.length ? '<div class="lab">' + title + '</div>' + arr.map(function (x) { return '<div class="tipi">' + esc(x) + '</div>'; }).join('') : ''; };
+    openDlg('<h3>' + (kind === 'week' ? 'Tu semana, explicada' : '¿Por qué estoy ' + (low ? 'bajo' : 'alto') + '?') + '</h3>' +
+      (low ? '<div class="note bad">Primero trata la bajada como te hayan indicado. Luego, con calma, lee esto.</div>' : '') +
+      (res.summary ? '<p style="font-size:15px">' + esc(res.summary) + '</p>' : '') +
+      list(kind === 'week' ? 'Lo que veo' : 'Lo más probable', res.points) + list('Puedes probar', res.tryList) + list('Pregunta a tu médico', res.doctor) +
+      (res.cut ? '<p class="fine">He quitado ' + res.cut + (res.cut === 1 ? ' frase que hablaba' : ' frases que hablaban') + ' de dosis: eso lo decides con tu equipo.</p>' : '') +
+      '<p class="fine">Lo ha escrito ' + esc(aiName()) + ' el ' + new Date(t).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) + '. Puede equivocarse: no cambies tus dosis ni tus pautas sin hablarlo con tu equipo.</p>' +
+      '<div class="acts"><button data-act="aishare">Compartir</button><button class="pri" data-act="close">Entendido</button></div>');
+  }
+  function reviewText(r) {
+    var x = lastReview.res, j = function (t, a) { return a.length ? '\n' + t + ':\n' + a.map(function (y) { return '- ' + y; }).join('\n') : ''; };
+    return (lastReview.kind === 'week' ? 'Mi semana (iocrino)' : 'Por qué estoy fuera de rango (iocrino)') + '\n' + x.summary + j('Lo que veo', x.points) + j('Puedo probar', x.tryList) + j('Preguntas para el médico', x.doctor) + '\n(Texto escrito por IA; orientativo.)';
+  }
+
   // ---------- platos ----------
   function plateSummary(p) { return p.items.map(function (it) { return it.name + (it.hcDirect != null ? '' : ' ' + (it.grams || '?') + ' g'); }).join(' · '); }
   function usePlate(i) {
@@ -778,6 +877,7 @@
     return '<section class="card"><h2>Tus últimos 7 días</h2><p style="margin:0 0 6px;font-size:15px">' + esc(Coach.weeklyText(r)) + '</p>' +
       (r.best ? '<p class="fine">Tu mejor día: ' + new Date(r.best.day).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }) + ', con un ' + Math.round(r.best.tir) + ' % en rango.</p>' : '') +
       (r.patterns.length ? '<div class="lab">Lo que se repite</div>' + r.patterns.map(function (q) { return '<div class="tipi">' + esc(q.x) + '</div>'; }).join('') : '<p class="fine">Con más días de datos te señalaré lo que se repite: qué comida te sube más, a qué hora sueles bajar…</p>') +
+      (aiOn() ? '<div class="row" style="margin-top:8px"><button class="pri" data-act="aiweek">' + ICON.spark + ' Explícamelo con IA</button>' + (S.coach.aiReview ? '<button class="ghost" data-act="aiweeklast">Ver la del ' + new Date(S.coach.aiReview.t).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) + '</button>' : '') + '</div>' : '') +
       '<p class="fine">Cada domingo a las 20:00 te aviso para que lo mires.</p></section>';
   }
   /* Aviso de los domingos a las 20:00. */
@@ -907,7 +1007,7 @@
       (P.needsUrl ? field('Dirección del servicio', 'ai.url', 'type="url" autocomplete="off" placeholder="https://openrouter.ai/api/v1"') : '') +
       field('Clave de ' + esc(P.name) + (P.needsUrl ? ' (si hace falta)' : ''), 'ai.keys.' + pv, 'type="password" autocomplete="off"') +
       field('Modelo' + (P.model ? ' (vacío = ' + esc(P.model) + ')' : ''), 'ai.models.' + pv, 'autocomplete="off" placeholder="' + esc(P.model || 'nombre del modelo') + '"') +
-      '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
+      sel('Enviar mis datos para «¿Por qué?» y la revisión semanal', 'ai.dataOk', [['', 'Preguntarme antes'], ['1', 'Sí, sin preguntar']]) + '<p class="fine">Cada servicio guarda su propia clave, solo en este dispositivo, y no entran en la copia de seguridad. Los modelos cambian a menudo: si uno deja de existir, pon el nombre del nuevo.</p></section>';
     h += '<section class="card"><h2>Mis platos</h2>' + (S.plates.length ? S.plates.map(function (p, i) { return '<div class="item"><div class="nm"><b>' + esc(p.name) + '</b><small>' + fmt(Calc.mealCarbs(p.items), 1) + ' g HC · ' + esc(plateSummary(p)) + '</small></div><button class="x" data-act="delplate" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Monta una comida y pulsa «Guardar como plato» para tenerla a un toque.</p>') + '</section>';
     h += '<section class="card"><h2>Mis alimentos propios</h2>' + (aiOn() ? '<div class="row"><button data-act="label">' + ICON.tag + ' Añadir desde la foto de una etiqueta</button></div>' : '') + (S.custom.length ? S.custom.map(function (f, i) { return '<div class="item"><div class="nm"><b>' + esc(f.name) + '</b><small>' + fmt(num(f.hc100) || 0, 1) + ' g de HC por 100 g' + (f.code ? ' · código ' + esc(f.code) : '') + '</small></div><button class="x" data-act="delcustom" data-i="' + i + '" aria-label="Borrar">✕</button></div>'; }).join('') : '<p class="mut">Los que crees o escanees se guardan aquí.</p>') + '</section>';
     h += '<div class="grp">Aspecto y seguridad</div>';
@@ -1363,12 +1463,21 @@
 
   // ---------- comidas grasas ----------
   var FATTY = /pizza|hamburgues|frit|croquet|lasa[nñ]a|kebab|churro|porra|bolleri|croissant|cruas[aá]n|donut|nachos|empanad|canelon|carbonara|queso|chorizo|panceta|bacon|tarta|pastel|helado|chocolate|fabada|cocido|paella/;
-  function fatAuto() { return S.meal.items.some(function (x) { return FATTY.test(norm(x.name)); }); }
+  /* Grasa y proteína (de la IA): si se conocen, mandan sobre la lista de palabras. */
+  function macroTot() {
+    var f = 0, p = 0, known = 0, n = 0;
+    S.meal.items.forEach(function (x) { var g = num(x.grams); if (!(g > 0)) return; n++; if (x.fat100 != null && x.prot100 != null) { known++; f += g * x.fat100 / 100; p += g * x.prot100 / 100; } });
+    return n && known === n ? { fat: f, prot: p, kcal: f * 9 + p * 4 } : null;
+  }
+  function macroHigh(m) { return m && (m.fat >= 20 || m.kcal >= 300); }
+  function fatAuto() { var m = macroTot(); if (m) return macroHigh(m); return S.meal.items.some(function (x) { return FATTY.test(norm(x.name)); }); }
   function isFatty() { return S.meal.fat === '1' || (S.meal.fat !== '0' && fatAuto()); }
   function fatHTML() {
     if (!S.meal.items.length) return '';
-    var on = isFatty();
-    return '<button class="chip mini' + (on ? ' on' : '') + '" data-act="fat" style="margin:6px 0">' + (on ? '✓ ' : '') + 'Comida con mucha grasa o proteína</button>' +
+    var on = isFatty(), m = macroTot();
+    var mh = m ? '<div class="tot" style="margin-top:6px"><span>Grasa · proteína</span><span><b>' + fmt(m.fat, 0) + '</b> g · <b>' + fmt(m.prot, 0) + '</b> g' + (macroHigh(m) ? ' · alta' : '') + '</span></div><p class="fine">Estimado por la IA.</p>'
+      : aiOn() ? '<button class="ghost" data-act="aimacro" style="margin-top:6px">' + ICON.spark + ' Calcular grasa y proteína con IA</button>' : '';
+    return mh + '<button class="chip mini' + (on ? ' on' : '') + '" data-act="fat" style="margin:6px 0">' + (on ? '✓ ' : '') + 'Comida con mucha grasa o proteína</button>' +
       (on ? '<div class="note info">La grasa y la proteína retrasan la subida: a veces llega 3 a 5 horas después (pizza, fritos, carne con salsa…). La dosis no cambia; al registrarla te aviso a las 3 h para que mires la glucosa. Si te pasa a menudo, pregunta a tu equipo por las <b>unidades grasa-proteína</b> o por repartir la dosis.</div>' : '');
   }
 
@@ -1754,8 +1863,17 @@
       case 'portion': { var pi = S.meal.items[i]; if (pi && pi.portion) { pi.grams = String(pi.portion); save(); render(); } break; }
       case 'photocam': $('#cam').click(); break;
       case 'photogal': $('#gal').click(); break;
+      case 'menu': dlgMenu(); break;
+      case 'menuadd': { var md2 = menuRes && menuRes.dishes[+b.dataset.k]; if (md2) { S.meal.items.push({ name: md2.name, hc100: md2.hc100, grams: String(md2.grams), est: true }); if (md2.fat === 'alta') S.meal.fat = '1'; save(); b.textContent = '✓'; b.disabled = true; renderSum(); toast('Añadido: ' + md2.name); } break; }
+      case 'menudone': closeDlg(); tab = 'comida'; if (S.meal.items.length) mstep = 2; render(); break;
+      case 'aimacro': aiMacros(); break;
+      case 'aiwhy': aiAsk('why'); break;
+      case 'aiweek': aiAsk('week'); break;
+      case 'aiok': S.ai.dataOk = '1'; save(); aiRun(aiPending || 'why'); break;
+      case 'aiweeklast': if (S.coach.aiReview) showReview('week', S.coach.aiReview.res, S.coach.aiReview.t); break;
+      case 'aishare': if (lastReview) shareText('iocrino', reviewText()); break;
       case 'photoadd':
-        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { S.meal.items.push({ name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); var it0 = $('#items'); if (it0 && it0.scrollIntoView) it0.parentNode.scrollIntoView({ behavior: 'smooth', block: 'start' }); mstep = 2; showStep(); toast(guided() ? 'Añadido. Revisa las cantidades y pulsa «Ver mi dosis»' : 'Añadido. Revisa las cantidades'); }
+        if (estimate) { tab = 'comida'; estimate.items.forEach(function (it) { var ni = { name: it.name, hc100: it.hc100, grams: String(it.grams), est: true }; if (it.fat100 != null) ni.fat100 = it.fat100; if (it.prot100 != null) ni.prot100 = it.prot100; S.meal.items.push(ni); }); estimate = null; save(); closeDlg(); tab = 'comida'; render(); var it0 = $('#items'); if (it0 && it0.scrollIntoView) it0.parentNode.scrollIntoView({ behavior: 'smooth', block: 'start' }); mstep = 2; showStep(); toast(guided() ? 'Añadido. Revisa las cantidades y pulsa «Ver mi dosis»' : 'Añadido. Revisa las cantidades'); }
         break;
       case 'useplate': usePlate(i); break;
       case 'saveplate': openDlg('<h3>Guardar como plato</h3><label>Nombre del plato</label><input id="pn" placeholder="Desayuno de diario…"><div class="acts"><button data-act="close">Cancelar</button><button class="pri" data-act="platesave">Guardar</button></div>'); break;
@@ -1926,7 +2044,7 @@
   });
   ['cam', 'gal'].forEach(function (id) {
     var inp = $('#' + id); if (!inp) return;
-    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) { if (photoMode === 'label') analyzeLabel(f); else analyzePhoto(f); } });
+    inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; inp.value = ''; if (f) { if (photoMode === 'label') analyzeLabel(f); else if (photoMode === 'menu') analyzeMenu(f); else analyzePhoto(f); } });
   });
   dlg.addEventListener('close', function () { stopScan(); wzOpen = false; });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { coachDaily(); nativePull().then(nativeSync); autoLibre(); refreshGlucoseUI(); scheduleBasal(); autoBackup(); if (tab === 'ahora' && !dlg.open) render(); } });
